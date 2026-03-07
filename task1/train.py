@@ -13,7 +13,7 @@ print("Using device:", device)
 
 MODEL_DIR = Path('models')
 TRAIN_CONFIG = {
-    'epochs': 10,
+    'epochs': 50,
     'optimiser': 'SGD',
     'lr': 0.001,
     'momentum': 0.9,
@@ -158,6 +158,7 @@ def init_loss(outputs, labels):
     # Loss function
     print('\nCreating loss function...')
     criterion = nn.CrossEntropyLoss()
+    labels = labels.to(device)
     # Test loss calculation on the current batch
     loss = criterion(outputs, labels)
     print('Initial loss:', loss.item())
