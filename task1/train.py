@@ -1,10 +1,15 @@
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from pathlib import Path
+import time
+import json
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
 
 MODEL_DIR = Path('models')
 TRAIN_CONFIG = {
@@ -13,8 +18,11 @@ TRAIN_CONFIG = {
     'lr': 0.001,
     'momentum': 0.9,
     'weight_decay': 1e-4,
-    'reg_dropout': 0.5
+    'reg_dropout': 0.5,
+    'batch_size': 64,
+    'validation_fraction': 0.2
 }
+
 
 class CNN(nn.Module):
     def __init__(self, dropout_prob = 0.0):
@@ -103,12 +111,18 @@ def download_data():
     return (train_dataset, test_dataset)
 
 
-def load_data_pytorch(train_dataset):
+def load_data_pytorch(train_dataset, batch_size, validation_fraction):
     # Load the data into PyTorch
     print('Loading dataset into PyTorch...')
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    total_size = len(train_dataset)
+    val_size = int(validation_fraction * total_size)
+    train_size = total_size - val_size
+    generator = torch.Generator().manual_seed(42)
+    train_subset, val_subset = random_split(train_dataset,[train_size, val_size],generator=generator)
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
     images, labels = next(iter(train_loader))
-    return images, labels, train_loader
+    return images, labels, train_loader, val_loader
 
 
 def inspect_data(images, labels, train_dataset):
@@ -130,10 +144,11 @@ def inspect_data(images, labels, train_dataset):
 def init_model(images, dropout_prob=0.0):
     # Create the model
     print('\nCreating model...')
-    model = CNN(dropout_prob)
+    model = CNN(dropout_prob).to(device)
     print(model)
     # Test a forward pass
     print('\nTesting forward pass...')
+    images = images.to(device)
     outputs = model(images)
     print('Model output shape:', outputs.shape)
     return model, outputs
@@ -172,36 +187,85 @@ def init_optimiser(model, method, **kwargs):
     print('Optimiser created:', optim_method)
     return optim_method
 
+def evaluate_model(data_loader, model, criterion):
+    model.eval()
+    total_loss = 0.0
+    total_correct = 0
+    total_samples = 0
+    with torch.no_grad():
+        for inputs, labels in data_loader:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            batch_size = labels.size(0)
+            total_loss += loss.item() * batch_size
+            predictions = outputs.argmax(dim=1)
+            total_correct += (predictions == labels).sum().item()
+            total_samples += batch_size
+    average_loss = total_loss / total_samples
+    accuracy = total_correct / total_samples
+    return average_loss, accuracy
 
-def train_model(epochs, train_loader, model, criterion, optim_method):
+def train_model(epochs, train_loader, val_loader, model, criterion, optim_method):
     # Training
     print('\nStarting training...')
-    model.train()
     # num_epochs = 50
-    batch_losses = []
-    epoch_losses = []
+    history = {'batch_losses': [], 'epoch_metrics': []}
+    #batch_losses = []
+    #epoch_losses = []
     for epoch in range(epochs):
-        epoch_loss = 0
-        num_batches = 0
+        model.train()
+        #epoch_loss = 0
+        #num_batches = 0
+        epoch_train_loss_sum = 0.0
+        epoch_train_correct = 0
+        epoch_train_samples = 0
         for i, (inputs, labels) in enumerate(train_loader):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             optim_method.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optim_method.step()
+            batch_size = labels.size(0)
             loss_value = loss.item()
-            batch_losses.append({
-                'epoch': epoch +1,
+            history['batch_losses'].append({
+                'epoch': epoch+1,
                 'batch': i+1,
                 'loss': loss_value
             })
-            epoch_loss += loss_value
-            num_batches += 1
-        avg_epoch_loss = epoch_loss / num_batches
-        epoch_losses.append(avg_epoch_loss)
-        print(f'Epoch {epoch + 1} average loss: {avg_epoch_loss:.4f}')
+            #epoch_loss += loss_value
+            #num_batches += 1
+            epoch_train_loss_sum += loss_value * batch_size
+            predictions = outputs.argmax(dim=1)
+            epoch_train_correct += (predictions == labels).sum().item()
+            epoch_train_samples += batch_size
+        #avg_epoch_loss = epoch_loss / num_batches
+        #epoch_losses.append(avg_epoch_loss)
+        train_loss = epoch_train_loss_sum / epoch_train_samples
+        train_accuracy = epoch_train_correct / epoch_train_samples
+        val_loss, val_accuracy = evaluate_model(val_loader, model, criterion)
+        epoch_record = {
+            'epoch': epoch + 1,
+            'train_loss': train_loss,
+            'train_accuracy': train_accuracy,
+            'validation_loss': val_loss,
+            'validation_accuracy': val_accuracy
+        }
+        history['epoch_metrics'].append(epoch_record)
+        print(
+            f"Epoch {epoch + 1:02d} | "
+            f"train_loss={train_loss:.4f} | "
+            f"train_acc={train_accuracy:.4f} | "
+            f"val_loss={val_loss:.4f} | "
+            f"val_acc={val_accuracy:.4f}"
+        )
+        #print(f'Epoch {epoch + 1} average loss: {avg_epoch_loss:.4f}')
     print('Training finished.')
-    return batch_losses, epoch_losses
+    #return batch_losses, epoch_losses
+    return history
 
 def save_model(model, name):
     """
@@ -218,37 +282,64 @@ def save_model(model, name):
     print(f'Model saved to: {model_path}')
     return model_path
 
-def full_train(name, images, labels, train_loader, method, epochs, dropout_prob=0.0, **kwargs):
+def save_history(history, name, stage, model, config=None):
+    MODEL_DIR.mkdir(exist_ok=True)
+    history_path = MODEL_DIR / f'{name}_{stage}_history.json'
+    payload = {
+        "model": name,
+        "architecture": str(model),
+        "stage": stage,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "config": config,
+        "metrics": history
+    }
+    with open(history_path, 'w') as f:
+        json.dump(payload, f, indent=4)
+    print(f'History saved to: {history_path}')
+    return history_path
+
+def full_train(name, images, labels, train_loader, val_loader, method, epochs, dropout_prob=0.0, **kwargs):
+    start_time = time.time()
     model, outputs = init_model(images, dropout_prob)
     criterion, loss = init_loss(outputs, labels)
     #optim_method = init_optimiser(model, 'SGD', lr=0.001, momentum=0.9)
     optim_method = init_optimiser(model, method, **kwargs)
-    batch_losses, epoch_losses = train_model(epochs, train_loader, model, criterion, optim_method)
-    save_model(model, name)
-    return model, batch_losses, epoch_losses
+    #batch_losses, epoch_losses = train_model(epochs, train_loader, model, criterion, optim_method)
+    history = train_model(epochs, train_loader, val_loader, model, criterion, optim_method)
+    model_path = save_model(model, name)
+    history_path = save_history(history, name, 'train', model, config=TRAIN_CONFIG)
+    end_time = time.time()
+    elapsed = end_time - start_time
+    print(f"\n{name} training completed in {elapsed:.2f} seconds")
+    #return model, batch_losses, epoch_losses
+    return model, history, model_path, history_path
 
 def main():
     train_dataset, test_dataset = download_data()
-    images, labels, train_loader = load_data_pytorch(train_dataset)
-    inspect_data(images, labels, train_dataset)
     cfg = TRAIN_CONFIG
-    base_model, base_batch_losses, base_epoch_losses = full_train(
-        'baseline', images, labels, train_loader, cfg['optimiser'],
-        epochs=cfg['epochs'], lr=cfg['lr'], momentum=cfg['momentum']
+    images, labels, train_loader, val_loader = load_data_pytorch(
+        train_dataset, batch_size=cfg['batch_size'],
+        validation_fraction=cfg['validation_fraction']
+    )
+    inspect_data(images, labels, train_dataset)
+
+    base_model, base_history, base_model_path, base_history_path = full_train(
+        'baseline', images, labels, train_loader, val_loader,
+        cfg['optimiser'], epochs=cfg['epochs'], lr=cfg['lr'], momentum=cfg['momentum']
     )
     print('\nBase model:')
     print(base_model)
-    print('\nBase epoch losses:')
-    print(base_epoch_losses)
-    reg_model, reg_batch_losses, reg_epoch_losses = full_train(
-        'regularised', images, labels, train_loader, cfg['optimiser'],
-        epochs=cfg['epochs'], lr=cfg['lr'], momentum=cfg['momentum'],
+    print('\nBase final epoch metrics:')
+    print(base_history['epoch_metrics'][-1])
+    reg_model, reg_history, reg_model_path, reg_history_path = full_train(
+        'regularised', images, labels, train_loader, val_loader,
+        cfg['optimiser'], epochs=cfg['epochs'], lr=cfg['lr'], momentum=cfg['momentum'],
         weight_decay=cfg['weight_decay'], dropout_prob=cfg['reg_dropout']
     )
     print('\nRegularised model:')
     print(reg_model)
-    print('\nRegular epoch losses:')
-    print(reg_epoch_losses)
+    print('\nRegular final epoch metrics:')
+    print(reg_history['epoch_metrics'][-1])
 
 if __name__ == '__main__':
     main()
