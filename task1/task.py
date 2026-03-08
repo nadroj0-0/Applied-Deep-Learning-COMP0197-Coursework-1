@@ -1,666 +1,401 @@
-import json
-from PIL import Image, ImageDraw
-
-# ---------- load data ----------
-with open("models/baseline_train_history.json") as f:
-    data = json.load(f)
-
-losses = [b["loss"] for b in data["metrics"]["batch_losses"]]
-
-# ---------- canvas ----------
-width, height = 1200, 600
-margin = 60
-
-img = Image.new("RGB", (width, height), "white")
-draw = ImageDraw.Draw(img)
-
-# ---------- axes ----------
-draw.line((margin, height-margin, width-margin, height-margin), fill="black", width=2)  # x-axis
-draw.line((margin, margin, margin, height-margin), fill="black", width=2)               # y-axis
-
-# ---------- scaling ----------
-min_loss = min(losses)
-max_loss = max(losses)
-
-def scale_x(i):
-    return margin + (i / (len(losses)-1)) * (width - 2*margin)
-
-def scale_y(loss):
-    return height - margin - ((loss - min_loss) / (max_loss - min_loss)) * (height - 2*margin)
-
-# ---------- plot line ----------
-points = [(scale_x(i), scale_y(l)) for i, l in enumerate(losses)]
-
-for i in range(len(points)-1):
-    draw.line([points[i], points[i+1]], fill="blue", width=2)
-
-# ---------- save ----------
-img.save("loss_plot.png")
-
-def load_losses(path):
-    with open(path) as f:
-        j = json.load(f)
-    return [x["loss"] for x in j["metrics"]["batch_losses"]]
-
-baseline = load_losses("models/baseline_train_history.json")
-regularised = load_losses("models/regularised_train_history.json")
-
-all_losses = baseline + regularised
-min_l, max_l = min(all_losses), max(all_losses)
-
-def plot_curve(draw, losses, color):
-    pts = [(scale_x(i), scale_y(l)) for i,l in enumerate(losses)]
-    for i in range(len(pts)-1):
-        draw.line([pts[i], pts[i+1]], fill=color, width=2)
-
-plot_curve(draw, baseline, "blue")
-plot_curve(draw, regularised, "red")
-
-
-
+# GenAI usage statement: Claude (Anthropic) was used in an assistive role to help
+# structure and debug this file. All deep learning logic, analysis, and design
+# decisions are the author's own.
 
 import json
 import os
 import math
-from PIL import Image, ImageDraw, ImageFont
+from pathlib import Path
+from PIL import Image, ImageDraw
+import torch
+from utils.network import CNN
+from PIL import ImageFont
 
 # ----------------------------
-# Config
+# Paths
 # ----------------------------
-WIDTH = 1600
-HEIGHT = 900
-MARGIN_L = 120
-MARGIN_R = 60
-MARGIN_T = 80
-MARGIN_B = 120
+TASK_DIR   = Path(__file__).resolve().parent
+MODEL_DIR  = TASK_DIR / "models"
+device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-BG = (245, 247, 250)
-GRID = (210, 215, 220)
-AXIS = (60, 60, 60)
-TEXT = (30, 30, 30)
+# ----------------------------
+# Plot config
+# ----------------------------
+WIDTH    = 2800
+HEIGHT   = 1600
+M_LEFT   = 110
+M_RIGHT  = 60
+M_TOP    = 80
+M_BOTTOM = 100
 
-BASELINE_COLOR = (40, 110, 255)
-REG_COLOR = (230, 60, 60)
+BG      = (245, 247, 250)
+GRID_C  = (210, 215, 220)
+AXIS_C  = (50,  50,  50)
+TEXT_C  = (30,  30,  30)
 
-DATA_DIR = "models"
+B_TRAIN = (40,  110, 255)   # baseline train  — bright blue
+B_VAL   = (30,  30,   30)   # baseline val    — black
+R_TRAIN = (220, 60,  50)    # reg train       — bright red
+R_VAL   = (30,  160,  60)   # reg val         — green
+B_GAP   = (180, 210, 255)   # baseline gap fill
+R_GAP   = (255, 185, 175)   # reg gap fill
+
 
 # ----------------------------
 # Helpers
 # ----------------------------
-def load_losses(path):
+def load_history(path: Path) -> dict:
+    """
+    Load a JSON history file saved by save_history() in utils/common.py.
+
+    Args:
+        path (Path): Path to the JSON history file.
+
+    Returns:
+        dict: Full JSON payload including metrics.
+    """
     with open(path) as f:
-        data = json.load(f)
-    return [x["loss"] for x in data["metrics"]["batch_losses"]]
+        return json.load(f)
 
-def moving_average(data, k=25):
-    out = []
-    for i in range(len(data)):
-        start = max(0, i-k)
-        window = data[start:i+1]
-        out.append(sum(window)/len(window))
-    return out
 
-def nice_ticks(min_v, max_v, n=6):
+def extract_epoch_metrics(history: dict):
+    """
+    Pull per-epoch train/val accuracy from a loaded history dict.
+
+    Args:
+        history (dict): Loaded JSON history dict from load_history().
+
+    Returns:
+        tuple:
+            epochs     (list[int])   — epoch numbers
+            train_acc  (list[float]) — training accuracy per epoch
+            val_acc    (list[float]) — validation accuracy per epoch
+    """
+    metrics   = history["metrics"]["epoch_metrics"]
+    epochs    = [m["epoch"]               for m in metrics]
+    train_acc = [m["train_accuracy"]      for m in metrics]
+    val_acc   = [m["validation_accuracy"] for m in metrics]
+    return epochs, train_acc, val_acc
+
+
+def nice_ticks(min_v: float, max_v: float, n: int = 6) -> list:
+    """
+    Generate clean round tick values for a chart axis.
+
+    Args:
+        min_v (float): Minimum data value.
+        max_v (float): Maximum data value.
+        n     (int):   Approximate number of ticks desired.
+
+    Returns:
+        list[float]: Rounded tick values spanning [min_v, max_v].
+    """
     span = max_v - min_v
-    step = span/(n-1)
-    mag = 10**math.floor(math.log10(step))
-    step = round(step/mag)*mag
-    ticks = []
-    v = math.floor(min_v/step)*step
-    while v <= max_v:
-        ticks.append(v)
+    step = span / (n - 1)
+    mag  = 10 ** math.floor(math.log10(step))
+    step = round(step / mag) * mag
+    ticks, v = [], math.floor(min_v / step) * step
+    while v <= max_v + 1e-9:
+        ticks.append(round(v, 6))
         v += step
     return ticks
 
-# ----------------------------
-# Load data
-# ----------------------------
-baseline = load_losses(os.path.join(DATA_DIR, "baseline_train_history.json"))
-regular = load_losses(os.path.join(DATA_DIR, "regularised_train_history.json"))
 
-baseline = moving_average(baseline, 40)
-regular = moving_average(regular, 40)
+def make_scalers(epochs, min_acc, max_acc):
+    """
+    Return (sx, sy) callables that map data coords to pixel coords.
 
-n = max(len(baseline), len(regular))
-all_losses = baseline + regular
+    Args:
+        epochs  (list[int]):  Epoch list (used for x range).
+        min_acc (float):      Minimum accuracy for y axis.
+        max_acc (float):      Maximum accuracy for y axis.
 
-min_loss = min(all_losses)
-max_loss = max(all_losses)
+    Returns:
+        tuple:
+            sx (callable): Maps epoch index (int) → x pixel (float).
+            sy (callable): Maps accuracy value (float) → y pixel (float).
+    """
+    n      = len(epochs)
+    plot_w = (WIDTH - M_LEFT - M_RIGHT) * 2
+    plot_h = (HEIGHT - M_TOP - M_BOTTOM) * 2
 
-# padding
-pad = (max_loss-min_loss)*0.1
-min_loss -= pad
-max_loss += pad
+    def sx(i):
+        return M_LEFT * 2 + (i / (n - 1)) * plot_w
 
-# ----------------------------
-# Canvas
-# ----------------------------
-img = Image.new("RGB", (WIDTH, HEIGHT), BG)
-draw = ImageDraw.Draw(img)
+    def sy(v):
+        return M_TOP * 2 + plot_h - ((v - min_acc) / (max_acc - min_acc)) * plot_h
 
-plot_w = WIDTH - MARGIN_L - MARGIN_R
-plot_h = HEIGHT - MARGIN_T - MARGIN_B
-
-def sx(i):
-    return MARGIN_L + (i/(n-1))*plot_w
-
-def sy(v):
-    return MARGIN_T + plot_h - ((v-min_loss)/(max_loss-min_loss))*plot_h
-
-# ----------------------------
-# Grid + ticks
-# ----------------------------
-ticks = nice_ticks(min_loss, max_loss)
-
-for t in ticks:
-    y = sy(t)
-    draw.line([(MARGIN_L, y), (WIDTH-MARGIN_R, y)], fill=GRID, width=2)
-    draw.text((MARGIN_L-80, y-10), f"{t:.2f}", fill=TEXT)
-
-for i in range(0, n, max(1, n//10)):
-    x = sx(i)
-    draw.line([(x, MARGIN_T), (x, HEIGHT-MARGIN_B)], fill=GRID, width=1)
-    draw.text((x-10, HEIGHT-MARGIN_B+10), str(i), fill=TEXT)
-
-# ----------------------------
-# Axes
-# ----------------------------
-draw.line(
-    [(MARGIN_L, MARGIN_T), (MARGIN_L, HEIGHT-MARGIN_B)],
-    fill=AXIS,
-    width=4
-)
-
-draw.line(
-    [(MARGIN_L, HEIGHT-MARGIN_B), (WIDTH-MARGIN_R, HEIGHT-MARGIN_B)],
-    fill=AXIS,
-    width=4
-)
-
-# ----------------------------
-# Curve drawing
-# ----------------------------
-def draw_curve(data, color):
-    pts = [(sx(i), sy(v)) for i,v in enumerate(data)]
-    for i in range(len(pts)-1):
-        draw.line([pts[i], pts[i+1]], fill=color, width=4)
-
-draw_curve(baseline, BASELINE_COLOR)
-draw_curve(regular, REG_COLOR)
-
-# ----------------------------
-# Legend
-# ----------------------------
-lx = WIDTH - 300
-ly = MARGIN_T + 20
-
-draw.rectangle([lx-20, ly-20, lx+200, ly+80], outline=(180,180,180), width=2, fill=(255,255,255))
-
-draw.line([(lx, ly), (lx+40, ly)], fill=BASELINE_COLOR, width=6)
-draw.text((lx+60, ly-10), "Baseline CNN", fill=TEXT)
-
-draw.line([(lx, ly+40), (lx+40, ly+40)], fill=REG_COLOR, width=6)
-draw.text((lx+60, ly+30), "Regularised CNN", fill=TEXT)
-
-# ----------------------------
-# Titles
-# ----------------------------
-draw.text((WIDTH/2-250, 20), "CNN Training Loss Comparison", fill=TEXT)
-
-draw.text((WIDTH/2-80, HEIGHT-60), "Training Batch", fill=TEXT)
-
-draw.text((20, HEIGHT/2-40), "Loss", fill=TEXT)
-
-# ----------------------------
-# Save
-# ----------------------------
-img.save("training_loss_comparison.png")
+    return sx, sy
 
 
+def draw_axes_and_grid(draw, sx, sy, epochs, ticks, font):
+    """
+    Draw grid lines, tick labels, and x/y axes onto a PIL ImageDraw canvas.
+
+    Args:
+        draw   (ImageDraw.Draw): Active draw context.
+        sx     (callable):       x scaler from make_scalers().
+        sy     (callable):       y scaler from make_scalers().
+        epochs (list[int]):      Epoch numbers for x-axis labels.
+        ticks  (list[float]):    Y-axis tick values from nice_ticks().
+    """
+    # horizontal grid + y tick labels
+    for t in ticks:
+        y = sy(t)
+        draw.line([(M_LEFT*2, y), (WIDTH*2 - M_RIGHT*2, y)], fill=GRID_C, width=2)
+        draw.text((M_LEFT*2 - 140, y - 9), f"{t:.2f}", fill=TEXT_C, font=font)
+
+    # vertical grid + x tick labels
+    n = len(epochs)
+    step = max(1, n // 10)
+    for i in range(0, n, step):
+        x = sx(i)
+        draw.line([(x, M_TOP*2), (x, HEIGHT*2 - M_BOTTOM*2)], fill=GRID_C, width=2)
+        draw.text((x - 8, HEIGHT*2 - M_BOTTOM*2 + 8), str(epochs[i]), fill=TEXT_C, font=font)
+
+    # axes
+    draw.line([(M_LEFT*2, M_TOP*2), (M_LEFT*2, HEIGHT*2 - M_BOTTOM*2)],            fill=AXIS_C, width=6)
+    draw.line([(M_LEFT*2, HEIGHT*2 - M_BOTTOM*2), (WIDTH*2 - M_RIGHT*2, HEIGHT*2 - M_BOTTOM*2)], fill=AXIS_C, width=6)
 
 
+def draw_gap_fill(draw, sx, sy, train_acc, val_acc, color):
+    """
+    Shade the generalisation gap between train and val accuracy curves.
 
-
-# ==========================================================
-# WORLD-CLASS GENERALISATION GAP VISUALISATION
-# ==========================================================
-
-def epoch_average_losses(path):
-    with open(path) as f:
-        data = json.load(f)
-
-    batches = data["metrics"]["batch_losses"]
-
-    epoch_dict = {}
-
-    for b in batches:
-        epoch_dict.setdefault(b["epoch"], []).append(b["loss"])
-
-    epochs = sorted(epoch_dict.keys())
-    losses = [sum(epoch_dict[e]) / len(epoch_dict[e]) for e in epochs]
-
-    return epochs, losses
-
-
-# Load epoch losses
-b_epochs, b_train = epoch_average_losses(os.path.join(DATA_DIR, "baseline_train_history.json"))
-r_epochs, r_train = epoch_average_losses(os.path.join(DATA_DIR, "regularised_train_history.json"))
-
-# Simulate validation curves (replace if you logged real validation loss)
-def synthetic_val(train):
-    return [t + 0.05 + (i/len(train))*0.25 for i,t in enumerate(train)]
-
-b_val = synthetic_val(b_train)
-r_val = synthetic_val(r_train)
-
-epochs = list(range(len(b_train)))
-
-all_losses = b_train + b_val + r_train + r_val
-min_l = min(all_losses)
-max_l = max(all_losses)
-
-pad = (max_l - min_l) * 0.15
-min_l -= pad
-max_l += pad
-
-
-# Canvas
-img2 = Image.new("RGB", (WIDTH, HEIGHT), BG)
-draw2 = ImageDraw.Draw(img2)
-
-plot_w = WIDTH - MARGIN_L - MARGIN_R
-plot_h = HEIGHT - MARGIN_T - MARGIN_B
-
-def sx2(i):
-    return MARGIN_L + (i/(len(epochs)-1))*plot_w
-
-def sy2(v):
-    return MARGIN_T + plot_h - ((v-min_l)/(max_l-min_l))*plot_h
-
-
-# Grid
-ticks = nice_ticks(min_l, max_l)
-
-for t in ticks:
-    y = sy2(t)
-    draw2.line([(MARGIN_L,y),(WIDTH-MARGIN_R,y)], fill=GRID, width=2)
-    draw2.text((MARGIN_L-80,y-10), f"{t:.2f}", fill=TEXT)
-
-for i in epochs:
-    if i % max(1,len(epochs)//10) == 0:
-        x = sx2(i)
-        draw2.line([(x,MARGIN_T),(x,HEIGHT-MARGIN_B)], fill=GRID, width=1)
-        draw2.text((x-10,HEIGHT-MARGIN_B+10), str(i), fill=TEXT)
-
-
-# Axes
-draw2.line([(MARGIN_L,MARGIN_T),(MARGIN_L,HEIGHT-MARGIN_B)], fill=AXIS, width=4)
-draw2.line([(MARGIN_L,HEIGHT-MARGIN_B),(WIDTH-MARGIN_R,HEIGHT-MARGIN_B)], fill=AXIS, width=4)
-
-
-# Curve helper
-def draw_curve(draw, data, color, width=4):
-    pts = [(sx2(i), sy2(v)) for i,v in enumerate(data)]
-    for i in range(len(pts)-1):
-        draw.line([pts[i], pts[i+1]], fill=color, width=width)
-
-
-# Fill generalisation gap
-def fill_gap(draw, train, val, color):
-    for i in range(len(train)-1):
+    Args:
+        draw      (ImageDraw.Draw): Active draw context.
+        sx        (callable):       x scaler.
+        sy        (callable):       y scaler.
+        train_acc (list[float]):    Training accuracy per epoch.
+        val_acc   (list[float]):    Validation accuracy per epoch.
+        color     (tuple):          RGB fill colour for the gap polygon.
+    """
+    for i in range(len(train_acc) - 1):
         poly = [
-            (sx2(i), sy2(train[i])),
-            (sx2(i+1), sy2(train[i+1])),
-            (sx2(i+1), sy2(val[i+1])),
-            (sx2(i), sy2(val[i]))
+            (sx(i),   sy(train_acc[i])),
+            (sx(i+1), sy(train_acc[i+1])),
+            (sx(i+1), sy(val_acc[i+1])),
+            (sx(i),   sy(val_acc[i])),
         ]
         draw.polygon(poly, fill=color)
 
 
-# Colours
-BASE_TRAIN = (50,120,255)
-BASE_VAL = (0,40,120)
-REG_TRAIN = (230,80,60)
-REG_VAL = (120,30,20)
-
-BASE_GAP = (120,170,255)
-REG_GAP = (255,150,140)
-
-
-# Fill areas
-fill_gap(draw2, b_train, b_val, BASE_GAP)
-fill_gap(draw2, r_train, r_val, REG_GAP)
-
-
-# Draw curves
-draw_curve(draw2, b_train, BASE_TRAIN)
-draw_curve(draw2, b_val, BASE_VAL)
-
-draw_curve(draw2, r_train, REG_TRAIN)
-draw_curve(draw2, r_val, REG_VAL)
-
-
-# Legend
-lx = WIDTH - 360
-ly = MARGIN_T + 20
-
-draw2.rectangle([lx-20, ly-20, lx+260, ly+140], outline=(180,180,180), width=2, fill=(255,255,255))
-
-draw2.line([(lx,ly),(lx+40,ly)], fill=BASE_TRAIN, width=6)
-draw2.text((lx+60,ly-10),"Baseline Train", fill=TEXT)
-
-draw2.line([(lx,ly+30),(lx+40,ly+30)], fill=BASE_VAL, width=6)
-draw2.text((lx+60,ly+20),"Baseline Validation", fill=TEXT)
-
-draw2.line([(lx,ly+70),(lx+40,ly+70)], fill=REG_TRAIN, width=6)
-draw2.text((lx+60,ly+60),"Regularised Train", fill=TEXT)
-
-draw2.line([(lx,ly+100),(lx+40,ly+100)], fill=REG_VAL, width=6)
-draw2.text((lx+60,ly+90),"Regularised Validation", fill=TEXT)
-
-
-# Titles
-draw2.text((WIDTH/2-280, 20), "Generalisation Gap: Baseline vs Regularised CNN", fill=TEXT)
-draw2.text((WIDTH/2-60, HEIGHT-60), "Epoch", fill=TEXT)
-draw2.text((20, HEIGHT/2-40), "Loss", fill=TEXT)
-
-
-# Save
-img2.save("generalisation_gap_comparison.png")
-
-
-
-
-
-
-# ==========================================================
-# ACCURACY PLOTS (EPOCH BASED)
-# ==========================================================
-
-def load_epoch_accuracy(path):
-    with open(path) as f:
-        data = json.load(f)
-
-    metrics = data["metrics"]["epoch_metrics"]
-
-    epochs = [m["epoch"] for m in metrics]
-    train_acc = [m["train_accuracy"] for m in metrics]
-    val_acc = [m["validation_accuracy"] for m in metrics]
-
-    return epochs, train_acc, val_acc
-
-
-b_epochs, b_train_acc, b_val_acc = load_epoch_accuracy(
-    os.path.join(DATA_DIR, "baseline_train_history.json")
-)
-
-r_epochs, r_train_acc, r_val_acc = load_epoch_accuracy(
-    os.path.join(DATA_DIR, "regularised_train_history.json")
-)
-
-epochs = b_epochs
-n = len(epochs)
-
-all_acc = b_train_acc + b_val_acc + r_train_acc + r_val_acc
-
-min_acc = min(all_acc)
-max_acc = max(all_acc)
-
-pad = (max_acc - min_acc) * 0.1
-min_acc -= pad
-max_acc += pad
-
-
-# ----------------------------
-# Accuracy Comparison Plot
-# ----------------------------
-
-img_acc = Image.new("RGB", (WIDTH, HEIGHT), BG)
-draw_acc = ImageDraw.Draw(img_acc)
-
-plot_w = WIDTH - MARGIN_L - MARGIN_R
-plot_h = HEIGHT - MARGIN_T - MARGIN_B
-
-def sx_acc(i):
-    return MARGIN_L + (i/(n-1))*plot_w
-
-def sy_acc(v):
-    return MARGIN_T + plot_h - ((v-min_acc)/(max_acc-min_acc))*plot_h
-
-
-ticks = nice_ticks(min_acc, max_acc)
-
-for t in ticks:
-    y = sy_acc(t)
-    draw_acc.line([(MARGIN_L,y),(WIDTH-MARGIN_R,y)], fill=GRID, width=2)
-    draw_acc.text((MARGIN_L-80,y-10), f"{t:.2f}", fill=TEXT)
-
-for i in range(0,n,max(1,n//10)):
-    x = sx_acc(i)
-    draw_acc.line([(x,MARGIN_T),(x,HEIGHT-MARGIN_B)], fill=GRID, width=1)
-    draw_acc.text((x-10,HEIGHT-MARGIN_B+10), str(epochs[i]), fill=TEXT)
-
-draw_acc.line([(MARGIN_L,MARGIN_T),(MARGIN_L,HEIGHT-MARGIN_B)], fill=AXIS, width=4)
-draw_acc.line([(MARGIN_L,HEIGHT-MARGIN_B),(WIDTH-MARGIN_R,HEIGHT-MARGIN_B)], fill=AXIS, width=4)
-
-
-def draw_curve_acc(data,color):
-    pts=[(sx_acc(i),sy_acc(v)) for i,v in enumerate(data)]
-    for i in range(len(pts)-1):
-        draw_acc.line([pts[i],pts[i+1]],fill=color,width=4)
-
-
-draw_curve_acc(b_train_acc,BASELINE_COLOR)
-draw_curve_acc(r_train_acc,REG_COLOR)
-
-
-# legend
-lx = WIDTH - 300
-ly = MARGIN_T + 20
-
-draw_acc.rectangle([lx-20,ly-20,lx+200,ly+80],outline=(180,180,180),width=2,fill=(255,255,255))
-
-draw_acc.line([(lx,ly),(lx+40,ly)],fill=BASELINE_COLOR,width=6)
-draw_acc.text((lx+60,ly-10),"Baseline CNN",fill=TEXT)
-
-draw_acc.line([(lx,ly+40),(lx+40,ly+40)],fill=REG_COLOR,width=6)
-draw_acc.text((lx+60,ly+30),"Regularised CNN",fill=TEXT)
-
-
-draw_acc.text((WIDTH/2-260,20),"Training Accuracy Comparison",fill=TEXT)
-draw_acc.text((WIDTH/2-40,HEIGHT-60),"Epoch",fill=TEXT)
-draw_acc.text((20,HEIGHT/2-40),"Accuracy",fill=TEXT)
-
-img_acc.save("training_accuracy_comparison.png")
-
-
-# ==========================================================
-# GENERALISATION GAP (ACCURACY)
-# ==========================================================
-
-img_gap = Image.new("RGB",(WIDTH,HEIGHT),BG)
-draw_gap = ImageDraw.Draw(img_gap)
-
-def sx_gap(i):
-    return MARGIN_L + (i/(n-1))*plot_w
-
-def sy_gap(v):
-    return MARGIN_T + plot_h - ((v-min_acc)/(max_acc-min_acc))*plot_h
-
-
-ticks = nice_ticks(min_acc,max_acc)
-
-for t in ticks:
-    y=sy_gap(t)
-    draw_gap.line([(MARGIN_L,y),(WIDTH-MARGIN_R,y)],fill=GRID,width=2)
-    draw_gap.text((MARGIN_L-80,y-10),f"{t:.2f}",fill=TEXT)
-
-for i in range(0,n,max(1,n//10)):
-    x=sx_gap(i)
-    draw_gap.line([(x,MARGIN_T),(x,HEIGHT-MARGIN_B)],fill=GRID,width=1)
-    draw_gap.text((x-10,HEIGHT-MARGIN_B+10),str(epochs[i]),fill=TEXT)
-
-
-draw_gap.line([(MARGIN_L,MARGIN_T),(MARGIN_L,HEIGHT-MARGIN_B)],fill=AXIS,width=4)
-draw_gap.line([(MARGIN_L,HEIGHT-MARGIN_B),(WIDTH-MARGIN_R,HEIGHT-MARGIN_B)],fill=AXIS,width=4)
-
-
-def fill_gap(train,val,color):
-    for i in range(len(train)-1):
-        poly=[
-            (sx_gap(i),sy_gap(train[i])),
-            (sx_gap(i+1),sy_gap(train[i+1])),
-            (sx_gap(i+1),sy_gap(val[i+1])),
-            (sx_gap(i),sy_gap(val[i]))
-        ]
-        draw_gap.polygon(poly,fill=color)
-
-
-fill_gap(b_train_acc,b_val_acc,BASE_GAP)
-fill_gap(r_train_acc,r_val_acc,REG_GAP)
-
-
-def draw_curve_gap(data,color):
-    pts=[(sx_gap(i),sy_gap(v)) for i,v in enumerate(data)]
-    for i in range(len(pts)-1):
-        draw_gap.line([pts[i],pts[i+1]],fill=color,width=4)
-
-
-draw_curve_gap(b_train_acc,BASE_TRAIN)
-draw_curve_gap(b_val_acc,BASE_VAL)
-
-draw_curve_gap(r_train_acc,REG_TRAIN)
-draw_curve_gap(r_val_acc,REG_VAL)
-
-
-draw_gap.text((WIDTH/2-310,20),
-              "Generalisation Gap (Accuracy): Baseline vs Regularised CNN",
-              fill=TEXT)
-
-draw_gap.text((WIDTH/2-40,HEIGHT-60),"Epoch",fill=TEXT)
-draw_gap.text((20,HEIGHT/2-40),"Accuracy",fill=TEXT)
-
-img_gap.save("generalisation_gap_accuracy.png")
-
-
-
-
-
-
-
-# ==========================================================
-# SEPARATE GENERALISATION GAP PLOTS (ACCURACY)
-# ==========================================================
-
-def draw_model_gap_plot(name, epochs, train_acc, val_acc, filename):
-
-    n = len(epochs)
-
-    all_vals = train_acc + val_acc
-    min_a = min(all_vals)
-    max_a = max(all_vals)
-
-    pad = (max_a - min_a) * 0.15
-    min_a -= pad
-    max_a += pad
-
-    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+def draw_line_curve(draw, sx, sy, data, color, width=3):
+    """
+    Draw a connected line curve from a list of y-values.
+
+    Args:
+        draw  (ImageDraw.Draw): Active draw context.
+        sx    (callable):       x scaler.
+        sy    (callable):       y scaler.
+        data  (list[float]):    Y values (one per epoch).
+        color (tuple):          RGB line colour.
+        width (int):            Line width in pixels.
+    """
+    pts = [(sx(i), sy(v)) for i, v in enumerate(data)]
+    for i in range(len(pts) - 1):
+        draw.line([pts[i], pts[i+1]], fill=color, width=width)
+
+def draw_dashed_curve(draw, sx, sy, data, color, width=3, dash=8, gap=5):
+    pts = [(sx(i), sy(v)) for i, v in enumerate(data)]
+    for i in range(len(pts) - 1):
+        x0, y0 = pts[i]
+        x1, y1 = pts[i+1]
+        length = math.hypot(x1-x0, y1-y0)
+        steps = int(length / (dash + gap))
+        for s in range(steps):
+            t0 = s * (dash + gap) / length
+            t1 = min((s * (dash + gap) + dash) / length, 1.0)
+            draw.line([(x0 + t0*(x1-x0), y0 + t0*(y1-y0)),
+                       (x0 + t1*(x1-x0), y0 + t1*(y1-y0))], fill=color, width=width)
+
+
+def draw_legend(draw, entries, x, y, font):
+    """
+    Draw a simple box legend with colour swatches and labels.
+
+    Args:
+        draw    (ImageDraw.Draw):          Active draw context.
+        entries (list[tuple[tuple,str]]):  List of (RGB color, label string) pairs.
+        x       (int):                     Left x of legend box.
+        y       (int):                     Top y of legend box.
+    """
+    pad    = 28
+    row_h  = 56
+    box_h  = pad * 2 + row_h * len(entries)
+    box_w  = 660
+
+    draw.rectangle([x - pad, y - pad, x + box_w, y + box_h], fill=(255,255,255), outline=(180,180,180), width=2)
+
+    for i, (color, label) in enumerate(entries):
+        ry = y + i * row_h
+        draw.line([(x, ry + 6), (x + 70, ry + 12)], fill=color, width=8)
+        draw.text((x + 90, ry), label, fill=TEXT_C, font=font)
+
+
+def generate_gap_plot(
+    b_epochs, b_train_acc, b_val_acc,
+    r_epochs, r_train_acc, r_val_acc,
+    save_path: Path
+):
+    """
+    Generate and save the generalisation_gap.png plot showing train vs validation
+    accuracy for both baseline and regularised models with gap shading.
+
+    Args:
+        b_epochs    (list[int]):   Baseline epoch numbers.
+        b_train_acc (list[float]): Baseline training accuracy per epoch.
+        b_val_acc   (list[float]): Baseline validation accuracy per epoch.
+        r_epochs    (list[int]):   Regularised epoch numbers.
+        r_train_acc (list[float]): Regularised training accuracy per epoch.
+        r_val_acc   (list[float]): Regularised validation accuracy per epoch.
+        save_path   (Path):        Output file path for the PNG.
+    """
+    epochs  = b_epochs  # both models trained for same number of epochs
+    all_acc = b_train_acc + b_val_acc + r_train_acc + r_val_acc
+    min_acc = min(all_acc)
+    max_acc = max(all_acc)
+
+    pad     = (max_acc - min_acc) * 0.12
+    min_acc -= pad
+    max_acc += pad
+
+    font_title = ImageFont.load_default(size=70)
+    font = ImageFont.load_default(size=60)
+    font_med = ImageFont.load_default(size=55)
+    font_small = ImageFont.load_default(size=45)
+
+    sx, sy = make_scalers(epochs, min_acc, max_acc)
+    ticks  = nice_ticks(min_acc, max_acc)
+
+    img  = Image.new("RGB", (WIDTH * 2, HEIGHT * 2), BG)
     draw = ImageDraw.Draw(img)
 
-    plot_w = WIDTH - MARGIN_L - MARGIN_R
-    plot_h = HEIGHT - MARGIN_T - MARGIN_B
+    draw_axes_and_grid(draw, sx, sy, epochs, ticks, font=font_med)
 
-    def sx(i):
-        return MARGIN_L + (i/(n-1))*plot_w
+    # gap fills (draw before curves so lines sit on top)
+    draw_gap_fill(draw, sx, sy, b_train_acc, b_val_acc, B_GAP)
+    draw_gap_fill(draw, sx, sy, r_train_acc, r_val_acc, R_GAP)
 
-    def sy(v):
-        return MARGIN_T + plot_h - ((v-min_a)/(max_a-min_a))*plot_h
+    # curves
+    draw_line_curve(draw, sx, sy, b_train_acc, B_TRAIN, width=6)
+    draw_line_curve(draw, sx, sy, b_val_acc, B_VAL, width=6)
+    draw_line_curve(draw, sx, sy, r_train_acc, R_TRAIN, width=6)
+    draw_line_curve(draw, sx, sy, r_val_acc, R_VAL, width=6)
 
+    # legend
+    entries = [
+        (B_TRAIN, "Baseline Train"),
+        (B_VAL,   "Baseline Validation"),
+        (R_TRAIN, "Regularised Train"),
+        (R_VAL,   "Regularised Validation"),
+    ]
+    draw_legend(draw, entries, M_LEFT*2 + 50, M_TOP*2 + 20, font=font_med)
 
-    # ---------------- grid ----------------
-    ticks = nice_ticks(min_a, max_a)
+    # labels
+    draw.text((WIDTH*2 // 2 - 260, 22), "Generalisation Gap: Baseline vs Regularised CNN", fill=TEXT_C, font=font_title)
+    draw.text((WIDTH*2 // 2 - 25,  HEIGHT*2 - M_BOTTOM*2 +80), "Epoch",    fill=TEXT_C, font=font)
+    draw.text((12, HEIGHT*2 // 2 - 10),                      "Accuracy", fill=TEXT_C, font=font_small)
 
-    for t in ticks:
-        y = sy(t)
-        draw.line([(MARGIN_L,y),(WIDTH-MARGIN_R,y)],fill=GRID,width=2)
-        draw.text((MARGIN_L-80,y-10),f"{t:.2f}",fill=TEXT)
-
-    for i in range(0,n,max(1,n//10)):
-        x = sx(i)
-        draw.line([(x,MARGIN_T),(x,HEIGHT-MARGIN_B)],fill=GRID,width=1)
-        draw.text((x-10,HEIGHT-MARGIN_B+10),str(epochs[i]),fill=TEXT)
-
-
-    # ---------------- axes ----------------
-    draw.line([(MARGIN_L,MARGIN_T),(MARGIN_L,HEIGHT-MARGIN_B)],fill=AXIS,width=4)
-    draw.line([(MARGIN_L,HEIGHT-MARGIN_B),(WIDTH-MARGIN_R,HEIGHT-MARGIN_B)],fill=AXIS,width=4)
-
-
-    # ---------------- fill generalisation gap ----------------
-    gap_color = (170,210,255) if name == "baseline" else (255,180,170)
-
-    for i in range(n-1):
-        poly = [
-            (sx(i),sy(train_acc[i])),
-            (sx(i+1),sy(train_acc[i+1])),
-            (sx(i+1),sy(val_acc[i+1])),
-            (sx(i),sy(val_acc[i]))
-        ]
-        draw.polygon(poly,fill=gap_color)
+    img = img.resize((WIDTH, HEIGHT), Image.LANCZOS)
+    img.save(save_path)
+    print(f"Plot saved to: {save_path}")
 
 
-    # ---------------- curves ----------------
-    train_color = (40,110,255) if name=="baseline" else (230,80,60)
-    val_color = (0,40,120) if name=="baseline" else (120,30,20)
+def load_model(dropout_prob: float, weights_path: Path) -> torch.nn.Module:
+    """
+    Instantiate a CNN and load saved weights from a .pt file.
 
-    def draw_curve(data,color):
-        pts=[(sx(i),sy(v)) for i,v in enumerate(data)]
-        for i in range(len(pts)-1):
-            draw.line([pts[i],pts[i+1]],fill=color,width=4)
+    Args:
+        dropout_prob  (float): Dropout probability used when the model was trained.
+        weights_path  (Path):  Path to the saved state dict (.pt file).
 
-    draw_curve(train_acc,train_color)
-    draw_curve(val_acc,val_color)
-
-
-    # ---------------- legend ----------------
-    lx = WIDTH - 300
-    ly = MARGIN_T + 20
-
-    draw.rectangle([lx-20,ly-20,lx+200,ly+80],outline=(180,180,180),width=2,fill=(255,255,255))
-
-    draw.line([(lx,ly),(lx+40,ly)],fill=train_color,width=6)
-    draw.text((lx+60,ly-10),"Train Accuracy",fill=TEXT)
-
-    draw.line([(lx,ly+40),(lx+40,ly+40)],fill=val_color,width=6)
-    draw.text((lx+60,ly+30),"Validation Accuracy",fill=TEXT)
+    Returns:
+        torch.nn.Module: Model with loaded weights in eval mode, on device.
+    """
+    model = CNN(dropout_prob=dropout_prob).to(device)
+    model.load_state_dict(torch.load(weights_path, map_location=device))
+    model.eval()
+    return model
 
 
-    # ---------------- titles ----------------
-    title = f"{name.capitalize()} CNN — Accuracy & Generalisation Gap"
+def print_analysis(b_epochs, b_train_acc, b_val_acc, r_epochs, r_train_acc, r_val_acc):
+    """
+    Print quantitative summary statistics to support the written technical analysis.
 
-    draw.text((WIDTH/2-280,20),title,fill=TEXT)
-    draw.text((WIDTH/2-40,HEIGHT-60),"Epoch",fill=TEXT)
-    draw.text((20,HEIGHT/2-40),"Accuracy",fill=TEXT)
+    Args:
+        b_epochs    (list[int]):   Baseline epoch numbers.
+        b_train_acc (list[float]): Baseline training accuracy per epoch.
+        b_val_acc   (list[float]): Baseline validation accuracy per epoch.
+        r_epochs    (list[int]):   Regularised epoch numbers.
+        r_train_acc (list[float]): Regularised training accuracy per epoch.
+        r_val_acc   (list[float]): Regularised validation accuracy per epoch.
+    """
+    b_gap_final = b_train_acc[-1] - b_val_acc[-1]
+    r_gap_final = r_train_acc[-1] - r_val_acc[-1]
+
+    b_peak_val  = max(b_val_acc)
+    r_peak_val  = max(r_val_acc)
+
+    b_peak_epoch = b_val_acc.index(b_peak_val) + 1
+    r_peak_epoch = r_val_acc.index(r_peak_val) + 1
+
+    print("=" * 60)
+    print("TASK 1 — QUANTITATIVE ANALYSIS SUMMARY")
+    print("=" * 60)
+
+    print("\n--- Baseline Model ---")
+    print(f"  Final train accuracy      : {b_train_acc[-1]:.4f}")
+    print(f"  Final validation accuracy : {b_val_acc[-1]:.4f}")
+    print(f"  Generalisation gap        : {b_gap_final:.4f}")
+    print(f"  Peak validation accuracy  : {b_peak_val:.4f} (epoch {b_peak_epoch})")
+
+    print("\n--- Regularised Model ---")
+    print(f"  Final train accuracy      : {r_train_acc[-1]:.4f}")
+    print(f"  Final validation accuracy : {r_val_acc[-1]:.4f}")
+    print(f"  Generalisation gap        : {r_gap_final:.4f}")
+    print(f"  Peak validation accuracy  : {r_peak_val:.4f} (epoch {r_peak_epoch})")
+
+    print("\n--- Gap Reduction ---")
+    print(f"  Gap reduced by            : {b_gap_final - r_gap_final:.4f}")
+    print(f"  Val accuracy improvement  : {r_peak_val - b_peak_val:.4f}")
+
+    print("\n--- Technical Analysis ---")
+    print("""
+[REPLACE THIS BLOCK WITH YOUR ~500 WORD ANALYSIS COVERING:]
+  1. The generalisation gap observed in each model
+  2. Why the baseline overfits (high capacity, no regularisation)
+  3. How SGD with momentum acts as implicit regularisation
+  4. How dropout + weight decay shift the bias-variance position
+  5. Justification of chosen hyperparameters
+    """)
+    print("=" * 60)
 
 
-    img.save(filename)
-    print(f"Saved {filename}")
+def main():
+    # ---- load histories ----
+    b_history = load_history(MODEL_DIR / "baseline_train_history.json")
+    r_history = load_history(MODEL_DIR / "regularised_train_history.json")
+
+    b_epochs, b_train_acc, b_val_acc = extract_epoch_metrics(b_history)
+    r_epochs, r_train_acc, r_val_acc = extract_epoch_metrics(r_history)
+
+    # ---- load models ----
+    baseline_model    = load_model(dropout_prob=0.0, weights_path=MODEL_DIR / "baseline_model.pt")
+    regularised_model = load_model(dropout_prob=0.5, weights_path=MODEL_DIR / "regularised_model.pt")
+    print("Baseline model loaded:    ", type(baseline_model).__name__)
+    print("Regularised model loaded: ", type(regularised_model).__name__)
+
+    # ---- generate plot ----
+    generate_gap_plot(
+        b_epochs, b_train_acc, b_val_acc,
+        r_epochs, r_train_acc, r_val_acc,
+        save_path=TASK_DIR / "generalization_gap.png"
+    )
+
+    # ---- print analysis ----
+    print_analysis(b_epochs, b_train_acc, b_val_acc, r_epochs, r_train_acc, r_val_acc)
 
 
-# ---------------- generate plots ----------------
-
-draw_model_gap_plot(
-    "baseline",
-    b_epochs,
-    b_train_acc,
-    b_val_acc,
-    "baseline_accuracy_gap.png"
-)
-
-draw_model_gap_plot(
-    "regularised",
-    r_epochs,
-    r_train_acc,
-    r_val_acc,
-    "regularised_accuracy_gap.png"
-)
+if __name__ == "__main__":
+    main()
