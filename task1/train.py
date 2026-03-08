@@ -33,7 +33,8 @@ def main():
 
     base_model, base_history, base_model_path, base_history_path = full_train(
         'baseline', images, labels, train_loader, val_loader,
-        cfg['optimiser'], epochs=cfg['epochs'], config=TRAIN_CONFIG, lr=cfg['lr'], momentum=cfg['momentum']
+        cfg['optimiser'], epochs=cfg['epochs'], model_dir=MODEL_DIR,
+        config=TRAIN_CONFIG, lr=cfg['lr'], momentum=cfg['momentum']
     )
     print('\nBase model:')
     print(base_model)
