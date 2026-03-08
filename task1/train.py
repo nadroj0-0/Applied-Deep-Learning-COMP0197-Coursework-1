@@ -1,6 +1,7 @@
 from utils.common import *
 import time
 
+MODEL_DIR = Path(__file__).parent / "models"
 
 TRAIN_CONFIG = {
     'seed': 42,
@@ -13,23 +14,6 @@ TRAIN_CONFIG = {
     'batch_size': 64,
     'validation_fraction': 0.2
 }
-
-
-def full_train(name, images, labels, train_loader, val_loader, method, epochs, dropout_prob=0.0, **kwargs):
-    start_time = time.time()
-    model, outputs = init_model(images, dropout_prob)
-    criterion, loss = init_loss(outputs, labels)
-    #optim_method = init_optimiser(model, 'SGD', lr=0.001, momentum=0.9)
-    optim_method = init_optimiser(model, method, **kwargs)
-    #batch_losses, epoch_losses = train_model(epochs, train_loader, model, criterion, optim_method)
-    history = train_model(epochs, train_loader, val_loader, model, criterion, optim_method)
-    model_path = save_model(model, name)
-    history_path = save_history(history, name, 'train', model, config=TRAIN_CONFIG)
-    end_time = time.time()
-    elapsed = end_time - start_time
-    print(f"\n{name} training completed in {elapsed:.2f} seconds")
-    #return model, batch_losses, epoch_losses
-    return model, history, model_path, history_path
 
 def main():
     try:
@@ -50,7 +34,7 @@ def main():
 
     base_model, base_history, base_model_path, base_history_path = full_train(
         'baseline', images, labels, train_loader, val_loader,
-        cfg['optimiser'], epochs=cfg['epochs'], lr=cfg['lr'], momentum=cfg['momentum']
+        cfg['optimiser'], epochs=cfg['epochs'], config=TRAIN_CONFIG, lr=cfg['lr'], momentum=cfg['momentum']
     )
     print('\nBase model:')
     print(base_model)
@@ -58,7 +42,8 @@ def main():
     print(base_history['epoch_metrics'][-1])
     reg_model, reg_history, reg_model_path, reg_history_path = full_train(
         'regularised', images, labels, train_loader, val_loader,
-        cfg['optimiser'], epochs=cfg['epochs'], lr=cfg['lr'], momentum=cfg['momentum'],
+        cfg['optimiser'], epochs=cfg['epochs'], model_dir=MODEL_DIR,
+        config=TRAIN_CONFIG, lr=cfg['lr'], momentum=cfg['momentum'],
         weight_decay=cfg['weight_decay'], dropout_prob=cfg['reg_dropout']
     )
     print('\nRegularised model:')

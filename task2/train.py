@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 import time
 
+MODEL_DIR = Path(__file__).parent / "models"
+
 TRAIN_CONFIG = {
     "seed": 42,
     "epochs": 50,
@@ -18,42 +20,6 @@ TRAIN_CONFIG = {
     "early_stopping_patience": 5
 }
 
-def mixup_data(inputs, labels, alpha):
-    """
-    Apply MixUp augmentation.
-    inputs : tensor (B,C,H,W)
-    labels : tensor (B)
-    alpha  : Beta distr param
-    """
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1.0
-    batch_size = inputs.size(0)
-    # random permutation of batch
-    index = torch.randperm(batch_size).to(device)
-    mixed_inputs = lam * inputs + (1 - lam) * inputs[index]
-    labels_a = labels
-    labels_b = labels[index]
-    return mixed_inputs, labels_a, labels_b, lam
-
-def label_smoothing_loss(outputs, targets, smoothing=0.1):
-    """
-    Custom label-smoothed cross entropy.
-    outputs  : model logits (batch_size, num_classes)
-    targets  : integer class labels (batch_size)
-    smoothing: epsilon value
-    """
-    num_classes = outputs.size(1)
-    # convert logits → log probabilities
-    log_probs = F.log_softmax(outputs, dim=1)
-    # create smoothed target distribution
-    with torch.no_grad():
-        true_dist = torch.zeros_like(log_probs)
-        true_dist.fill_(smoothing / (num_classes - 1))
-        true_dist.scatter_(1, targets.unsqueeze(1), 1 - smoothing)
-    loss = (-true_dist * log_probs).sum(dim=1).mean()
-    return loss
 
 def main():
     try:
@@ -74,22 +40,32 @@ def main():
     )
 
     # ---- test MixUp ----
-    images = images.to(device)
-    labels = labels.to(device)
+    sample_images = images.to(device)
+    sample_labels = labels.to(device)
 
-    mixed_images, la, lb, lam = mixup_data(images, labels, alpha=cfg["mixup_alpha"])
+    mixed_images, la, lb, lam = mixup_data(sample_images, sample_labels, alpha=cfg["mixup_alpha"])
 
     print("MixUp output shape:", mixed_images.shape)
     print("Lambda:", lam)
 
     # ---- test label smoothing ----
     outputs = torch.randn(4,10).to(device)
-    labels = torch.tensor([1,3,5,2]).to(device)
-
-    loss = label_smoothing_loss(outputs, labels)
-
+    test_labels = torch.tensor([1,3,5,2]).to(device)
+    loss = label_smoothing_loss(outputs, test_labels, cfg["label_smoothing"])
     print("Label smoothing loss:", loss)
 
+    experiments = [
+        ("baseline_mixup", mixup_step, {"alpha": cfg["mixup_alpha"]}),
+        ("baseline_smooth", smoothing_step, {"smoothing": cfg["label_smoothing"]}),
+        ("baseline_mixup_smooth", mixup_smoothing_step, {"alpha": cfg["mixup_alpha"], "smoothing": cfg["label_smoothing"]}),
+    ]
+    for name, step_fn, params in experiments:
+        print(f"\nRunning experiment: {name}")
+        full_train(name, images,labels,train_loader,val_loader,cfg["optimiser"],
+                   epochs=cfg["epochs"], model_dir=MODEL_DIR, config=TRAIN_CONFIG,
+                   training_step=step_fn,**params,lr=cfg["lr"],momentum=cfg["momentum"],
+                   weight_decay=cfg["weight_decay"]
+        )
 
 if __name__ == "__main__":
     main()

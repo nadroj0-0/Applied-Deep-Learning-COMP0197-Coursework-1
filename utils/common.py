@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader, random_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from pathlib import Path
 import time
 import json
@@ -19,8 +20,6 @@ print("Using device:", device)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-
-MODEL_DIR = Path('../task1/models')
 
 
 def set_seed(seed=None):
@@ -141,6 +140,90 @@ def init_optimiser(model, method, **kwargs):
     print('Optimiser created:', optim_method)
     return optim_method
 
+# ================================
+# Training step strategies
+# ================================
+
+def baseline_step(model, inputs, labels, criterion, **kwargs):
+    """
+    Standard training step.
+    """
+    outputs = model(inputs)
+    loss = criterion(outputs, labels)
+    return loss, outputs
+
+def mixup_data(inputs, labels, alpha):
+    """
+    Apply MixUp augmentation.
+    inputs : tensor (B,C,H,W)
+    labels : tensor (B)
+    alpha  : Beta distr param
+    """
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1.0
+    batch_size = inputs.size(0)
+    # random permutation of batch
+    index = torch.randperm(batch_size).to(device)
+    mixed_inputs = lam * inputs + (1 - lam) * inputs[index]
+    labels_a = labels
+    labels_b = labels[index]
+    return mixed_inputs, labels_a, labels_b, lam
+
+def mixup_step(model, inputs, labels, criterion, **kwargs):
+    """
+    MixUp training step.
+    """
+    alpha = kwargs["alpha"]
+    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, alpha)
+    outputs = model(mixed_inputs)
+    loss = lam * criterion(outputs, y_a) + (1 - lam) * criterion(outputs, y_b)
+    return loss, outputs
+
+
+def label_smoothing_loss(outputs, targets, smoothing):
+    """
+    Custom label-smoothed cross entropy.
+    outputs  : model logits (batch_size, num_classes)
+    targets  : integer class labels (batch_size)
+    smoothing: epsilon value
+    """
+    num_classes = outputs.size(1)
+    # convert logits → log probabilities
+    log_probs = F.log_softmax(outputs, dim=1)
+    # create smoothed target distribution
+    with torch.no_grad():
+        true_dist = torch.zeros_like(log_probs)
+        true_dist.fill_(smoothing / (num_classes - 1))
+        true_dist.scatter_(1, targets.unsqueeze(1), 1 - smoothing)
+    loss = (-true_dist * log_probs).sum(dim=1).mean()
+    return loss
+
+
+def smoothing_step(model, inputs, labels, criterion, **kwargs):
+    """
+    Label smoothing training step.
+    """
+    smoothing = kwargs["smoothing"]
+    outputs = model(inputs)
+    loss = label_smoothing_loss(outputs, labels, smoothing)
+    return loss, outputs
+
+
+def mixup_smoothing_step(model, inputs, labels, criterion, **kwargs):
+    """
+    MixUp + label smoothing.
+    """
+    alpha = kwargs["alpha"]
+    smoothing = kwargs["smoothing"]
+    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, alpha)
+    outputs = model(mixed_inputs)
+    loss_a = label_smoothing_loss(outputs, y_a, smoothing)
+    loss_b = label_smoothing_loss(outputs, y_b, smoothing)
+    loss = lam * loss_a + (1 - lam) * loss_b
+    return loss, outputs
+
 def evaluate_model(data_loader, model, criterion):
     model.eval()
     total_loss = 0.0
@@ -161,7 +244,7 @@ def evaluate_model(data_loader, model, criterion):
     accuracy = total_correct / total_samples
     return average_loss, accuracy
 
-def train_model(epochs, train_loader, val_loader, model, criterion, optim_method):
+def train_model(epochs, train_loader, val_loader, model, criterion, optim_method, training_step=baseline_step, **kwargs):
     # Training
     print('\nStarting training...')
     # num_epochs = 50
@@ -179,8 +262,9 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
             inputs = inputs.to(device)
             labels = labels.to(device)
             optim_method.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            #outputs = model(inputs)
+            #loss = criterion(outputs, labels)
+            loss, outputs = training_step(model,inputs,labels,criterion,**kwargs)
             loss.backward()
             optim_method.step()
             batch_size = labels.size(0)
@@ -221,7 +305,7 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
     #return batch_losses, epoch_losses
     return history
 
-def save_model(model, name):
+def save_model(model, name, model_dir):
     """
     Saves trained PyTorch model inside 'models' dir. If dir doesn't exist dir created
     Parameters
@@ -230,15 +314,15 @@ def save_model(model, name):
     Returns
     path : Path - Full path to saved file
     """
-    MODEL_DIR.mkdir(exist_ok=True)
-    model_path = MODEL_DIR / f'{name}_model.pt'
+    model_dir.mkdir(exist_ok=True)
+    model_path = model_dir / f'{name}_model.pt'
     torch.save(model.state_dict(), model_path)
     print(f'Model saved to: {model_path}')
     return model_path
 
-def save_history(history, name, stage, model, config=None):
-    MODEL_DIR.mkdir(exist_ok=True)
-    history_path = MODEL_DIR / f'{name}_{stage}_history.json'
+def save_history(history, name, stage, model, model_dir, config=None):
+    model_dir.mkdir(exist_ok=True)
+    history_path = model_dir / f'{name}_{stage}_history.json'
     payload = {
         "model": name,
         "architecture": str(model),
@@ -251,3 +335,21 @@ def save_history(history, name, stage, model, config=None):
         json.dump(payload, f, indent=4)
     print(f'History saved to: {history_path}')
     return history_path
+
+def full_train(name, images, labels, train_loader, val_loader, method, epochs, model_dir,
+               config=None, dropout_prob=0.0, training_step=baseline_step, **kwargs):
+    start_time = time.time()
+    model, outputs = init_model(images, dropout_prob)
+    criterion, loss = init_loss(outputs, labels)
+    #optim_method = init_optimiser(model, 'SGD', lr=0.001, momentum=0.9)
+    optim_method = init_optimiser(model, method, **kwargs)
+    #batch_losses, epoch_losses = train_model(epochs, train_loader, model, criterion, optim_method)
+    history = train_model(epochs, train_loader, val_loader, model, criterion,
+                          optim_method, training_step=training_step, **(kwargs or {}))
+    model_path = save_model(model, name, model_dir)
+    history_path = save_history(history, name, 'train', model, model_dir, config=config)
+    end_time = time.time()
+    elapsed = end_time - start_time
+    print(f"\n{name} training completed in {elapsed:.2f} seconds")
+    #return model, batch_losses, epoch_losses
+    return model, history, model_path, history_path
