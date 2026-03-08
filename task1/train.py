@@ -1,5 +1,4 @@
 from utils.common import *
-import time
 
 MODEL_DIR = Path(__file__).parent / "models"
 
