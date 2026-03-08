@@ -7,12 +7,50 @@ import torch.optim as optim
 from pathlib import Path
 import time
 import json
+import random
+import numpy as np
 from .network import CNN
+
+
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+
 MODEL_DIR = Path('../task1/models')
+
+
+def set_seed(seed=None):
+    """
+    Set random seeds for reproducibility across Python, NumPy, and PyTorch.
+    Also configures deterministic CUDA behaviour.
+    """
+    if seed is None:
+        seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    generator = torch.Generator().manual_seed(seed)
+    print(f"Random seed set to {seed}")
+    return generator, seed
+
+def init_seed(cfg):
+    """
+    Resolve seed from config, initialise RNGs, and record the final seed.
+    Returns the dataloader generator.
+    """
+    seed = cfg.get("seed")
+    generator, seed = set_seed(seed)
+    cfg["seed"] = seed
+    return generator
 
 def download_data():
     # Download the data
@@ -21,21 +59,20 @@ def download_data():
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
-    train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-    test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+    train_dataset = datasets.CIFAR10(root=DATA_DIR, train=True, download=True, transform=transform)
+    test_dataset = datasets.CIFAR10(root=DATA_DIR, train=False, download=True, transform=transform)
     print('Dataset downloaded successfully.')
     return (train_dataset, test_dataset)
 
 
-def load_data_pytorch(train_dataset, batch_size, validation_fraction):
+def load_data_pytorch(train_dataset, batch_size, validation_fraction, generator):
     # Load the data into PyTorch
     print('Loading dataset into PyTorch...')
     total_size = len(train_dataset)
     val_size = int(validation_fraction * total_size)
     train_size = total_size - val_size
-    generator = torch.Generator().manual_seed(42)
     train_subset, val_subset = random_split(train_dataset,[train_size, val_size],generator=generator)
-    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, generator=generator)
     val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
     images, labels = next(iter(train_loader))
     return images, labels, train_loader, val_loader
@@ -128,7 +165,7 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
     # Training
     print('\nStarting training...')
     # num_epochs = 50
-    history = {'batch_losses': [], 'epoch_metrics': []}
+    history = {'epoch_metrics': [], 'batch_losses': []}
     #batch_losses = []
     #epoch_losses = []
     for epoch in range(epochs):

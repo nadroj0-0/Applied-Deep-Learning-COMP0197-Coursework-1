@@ -3,6 +3,7 @@ import time
 
 
 TRAIN_CONFIG = {
+    'seed': 42,
     'epochs': 50,
     'optimiser': 'SGD',
     'lr': 0.001,
@@ -31,11 +32,19 @@ def full_train(name, images, labels, train_loader, val_loader, method, epochs, d
     return model, history, model_path, history_path
 
 def main():
+    try:
+        cfg = TRAIN_CONFIG
+    except NameError:
+        raise RuntimeError(
+            "TRAIN_CONFIG must be defined before calling main(). "
+            "It defines the experiment hyperparameters."
+        )
+    generator = init_seed(cfg)
     train_dataset, test_dataset = download_data()
-    cfg = TRAIN_CONFIG
     images, labels, train_loader, val_loader = load_data_pytorch(
         train_dataset, batch_size=cfg['batch_size'],
-        validation_fraction=cfg['validation_fraction']
+        validation_fraction=cfg['validation_fraction'],
+        generator=generator
     )
     inspect_data(images, labels, train_dataset)
 
