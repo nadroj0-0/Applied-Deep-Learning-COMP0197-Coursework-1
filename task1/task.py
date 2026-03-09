@@ -2,7 +2,6 @@
 # structure and debug this file. All deep learning logic, analysis, and design
 # decisions are the author's own.
 
-import json
 from pathlib import Path
 import torch
 from utils.plotting import generate_gap_plot
