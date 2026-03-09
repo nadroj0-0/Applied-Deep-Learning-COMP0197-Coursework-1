@@ -224,6 +224,11 @@ def mixup_smoothing_step(model, inputs, labels, criterion, **kwargs):
     loss = lam * loss_a + (1 - lam) * loss_b
     return loss, outputs
 
+baseline_step.valid_train_accuracy = True
+smoothing_step.valid_train_accuracy = True
+mixup_step.valid_train_accuracy = False
+mixup_smoothing_step.valid_train_accuracy = False
+
 def evaluate_model(data_loader, model, criterion):
     model.eval()
     total_loss = 0.0
@@ -244,13 +249,24 @@ def evaluate_model(data_loader, model, criterion):
     accuracy = total_correct / total_samples
     return average_loss, accuracy
 
-def train_model(epochs, train_loader, val_loader, model, criterion, optim_method, training_step=baseline_step, **kwargs):
+def train_model(epochs, train_loader, val_loader, model, criterion, optim_method,
+                training_step=baseline_step,  early_stopping_patience=None, **kwargs):
+    import copy
     # Training
     print('\nStarting training...')
     # num_epochs = 50
-    history = {'epoch_metrics': [], 'batch_losses': []}
+    history: dict = {'epoch_metrics': [],'early_stopping': None,'batch_losses': []}
     #batch_losses = []
     #epoch_losses = []
+    accuracy_valid = getattr(training_step, "valid_train_accuracy", True)
+    best_val_loss = float("inf")
+    best_model_state = None
+    patience_counter = 0
+    best_epoch = None
+    stopped_epoch = None
+    early_stopping_enabled = (
+            early_stopping_patience is not None and early_stopping_patience > 0
+    )
     for epoch in range(epochs):
         model.train()
         #epoch_loss = 0
@@ -277,8 +293,9 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
             #epoch_loss += loss_value
             #num_batches += 1
             epoch_train_loss_sum += loss_value * batch_size
-            predictions = outputs.argmax(dim=1)
-            epoch_train_correct += (predictions == labels).sum().item()
+            if accuracy_valid:
+                predictions = outputs.argmax(dim=1)
+                epoch_train_correct += (predictions == labels).sum().item()
             epoch_train_samples += batch_size
         #avg_epoch_loss = epoch_loss / num_batches
         #epoch_losses.append(avg_epoch_loss)
@@ -288,20 +305,56 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
         epoch_record = {
             'epoch': epoch + 1,
             'train_loss': train_loss,
-            'train_accuracy': train_accuracy,
             'validation_loss': val_loss,
             'validation_accuracy': val_accuracy
         }
+        if accuracy_valid:
+            epoch_record['train_accuracy'] = train_accuracy
         history['epoch_metrics'].append(epoch_record)
-        print(
-            f"Epoch {epoch + 1:02d} | "
-            f"train_loss={train_loss:.4f} | "
-            f"train_acc={train_accuracy:.4f} | "
-            f"val_loss={val_loss:.4f} | "
-            f"val_acc={val_accuracy:.4f}"
-        )
+        if early_stopping_enabled:
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_epoch = epoch + 1
+                best_model_state = copy.deepcopy(model.state_dict())
+                patience_counter = 0
+            else:
+                patience_counter += 1
+            if patience_counter >= early_stopping_patience:
+                stopped_epoch = epoch + 1
+                print(f"Early stopping triggered at epoch {stopped_epoch}")
+                break
+        if accuracy_valid:
+            print(
+                f"Epoch {epoch + 1:02d} | "
+                f"train_loss={train_loss:.4f} | "
+                f"train_acc={train_accuracy:.4f} | "
+                f"val_loss={val_loss:.4f} | "
+                f"val_acc={val_accuracy:.4f}"
+            )
+        else:
+            print(
+                f"Epoch {epoch + 1:02d} | "
+                f"train_loss={train_loss:.4f} | "
+                f"val_loss={val_loss:.4f} | "
+                f"val_acc={val_accuracy:.4f}"
+            )
+
         #print(f'Epoch {epoch + 1} average loss: {avg_epoch_loss:.4f}')
     print('Training finished.')
+    if early_stopping_enabled and stopped_epoch is None:
+        stopped_epoch = epochs
+    if early_stopping_enabled and best_model_state is not None:
+        model.load_state_dict(best_model_state)
+        print("Restored best model from early stopping.")
+        print(f"Best validation loss {best_val_loss:.4f} at epoch {best_epoch}")
+    if early_stopping_enabled:
+        history["early_stopping"] = {
+            "enabled": early_stopping_enabled,
+            "patience": early_stopping_patience,
+            "best_epoch": best_epoch,
+            "best_validation_loss": best_val_loss,
+            "stopped_epoch": stopped_epoch
+        }
     #return batch_losses, epoch_losses
     return history
 
@@ -328,7 +381,7 @@ def save_history(history, name, stage, model, model_dir, config=None):
         "architecture": str(model),
         "stage": stage,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "config": config,
+        "config": config or {},
         "metrics": history
     }
     with open(history_path, 'w') as f:
@@ -345,7 +398,9 @@ def full_train(name, images, labels, train_loader, val_loader, method, epochs, m
     optim_method = init_optimiser(model, method, **kwargs)
     #batch_losses, epoch_losses = train_model(epochs, train_loader, model, criterion, optim_method)
     history = train_model(epochs, train_loader, val_loader, model, criterion,
-                          optim_method, training_step=training_step, **(kwargs or {}))
+                          optim_method, training_step=training_step,
+                          early_stopping_patience=config.get("early_stopping_patience") if config else None,
+                          **(kwargs or {}))
     model_path = save_model(model, name, model_dir)
     history_path = save_history(history, name, 'train', model, model_dir, config=config)
     end_time = time.time()

@@ -258,7 +258,7 @@ def generate_gap_plot(
 
     pad     = (max_acc - min_acc) * 0.12
     min_acc -= pad
-    max_acc += pad
+    max_acc = min(1.0, max_acc + pad)
 
     font_title = ImageFont.load_default(size=70)
     font = ImageFont.load_default(size=60)
@@ -390,7 +390,7 @@ def main():
     generate_gap_plot(
         b_epochs, b_train_acc, b_val_acc,
         r_epochs, r_train_acc, r_val_acc,
-        save_path=TASK_DIR / "generalization_gap.png"
+        save_path=TASK_DIR / "generalisation_gap.png"
     )
 
     # ---- print analysis ----
