@@ -11,6 +11,7 @@ import json
 import random
 import numpy as np
 from .network import CNN
+from .early_stopping import EarlyStopping
 
 
 
@@ -251,7 +252,6 @@ def evaluate_model(data_loader, model, criterion):
 
 def train_model(epochs, train_loader, val_loader, model, criterion, optim_method,
                 training_step=baseline_step,  early_stopping_patience=None, **kwargs):
-    import copy
     # Training
     print('\nStarting training...')
     # num_epochs = 50
@@ -259,14 +259,10 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
     #batch_losses = []
     #epoch_losses = []
     accuracy_valid = getattr(training_step, "valid_train_accuracy", True)
-    best_val_loss = float("inf")
-    best_model_state = None
-    patience_counter = 0
-    best_epoch = None
-    stopped_epoch = None
     early_stopping_enabled = (
             early_stopping_patience is not None and early_stopping_patience > 0
     )
+    early_stopper = EarlyStopping(early_stopping_patience) if early_stopping_enabled else None
     for epoch in range(epochs):
         model.train()
         #epoch_loss = 0
@@ -300,7 +296,8 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
         #avg_epoch_loss = epoch_loss / num_batches
         #epoch_losses.append(avg_epoch_loss)
         train_loss = epoch_train_loss_sum / epoch_train_samples
-        train_accuracy = epoch_train_correct / epoch_train_samples
+        if accuracy_valid:
+            train_accuracy = epoch_train_correct / epoch_train_samples
         val_loss, val_accuracy = evaluate_model(val_loader, model, criterion)
         epoch_record = {
             'epoch': epoch + 1,
@@ -311,17 +308,10 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
         if accuracy_valid:
             epoch_record['train_accuracy'] = train_accuracy
         history['epoch_metrics'].append(epoch_record)
-        if early_stopping_enabled:
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_epoch = epoch + 1
-                best_model_state = copy.deepcopy(model.state_dict())
-                patience_counter = 0
-            else:
-                patience_counter += 1
-            if patience_counter >= early_stopping_patience:
-                stopped_epoch = epoch + 1
-                print(f"Early stopping triggered at epoch {stopped_epoch}")
+        if early_stopper:
+            stop = early_stopper.update(val_loss, model, epoch + 1)
+            if stop:
+                print(f"Early stopping triggered at epoch {epoch + 1}")
                 break
         if accuracy_valid:
             print(
@@ -338,22 +328,21 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
                 f"val_loss={val_loss:.4f} | "
                 f"val_acc={val_accuracy:.4f}"
             )
-
         #print(f'Epoch {epoch + 1} average loss: {avg_epoch_loss:.4f}')
     print('Training finished.')
-    if early_stopping_enabled and stopped_epoch is None:
-        stopped_epoch = epochs
-    if early_stopping_enabled and best_model_state is not None:
-        model.load_state_dict(best_model_state)
+    if early_stopper and early_stopper.stopped_epoch is None:
+        early_stopper.stopped_epoch = epochs
+    if early_stopper and early_stopper.best_model_state is not None:
+        model.load_state_dict(early_stopper.best_model_state)
         print("Restored best model from early stopping.")
-        print(f"Best validation loss {best_val_loss:.4f} at epoch {best_epoch}")
+        print(f"Best validation loss {early_stopper.best_val_loss:.4f} at epoch {early_stopper.best_epoch}")
     if early_stopping_enabled:
         history["early_stopping"] = {
-            "enabled": early_stopping_enabled,
-            "patience": early_stopping_patience,
-            "best_epoch": best_epoch,
-            "best_validation_loss": best_val_loss,
-            "stopped_epoch": stopped_epoch
+            "enabled": True,
+            "patience": early_stopper.patience,
+            "best_epoch": early_stopper.best_epoch,
+            "best_validation_loss": early_stopper.best_val_loss,
+            "stopped_epoch": early_stopper.stopped_epoch
         }
     #return batch_losses, epoch_losses
     return history
@@ -408,3 +397,53 @@ def full_train(name, images, labels, train_loader, val_loader, method, epochs, m
     print(f"\n{name} training completed in {elapsed:.2f} seconds")
     #return model, batch_losses, epoch_losses
     return model, history, model_path, history_path
+
+def load_history(path: Path) -> dict:
+    """
+    Load a JSON history file saved by save_history() in utils/common.py.
+
+    Args:
+        path (Path): Path to the JSON history file.
+
+    Returns:
+        dict: Full JSON payload including metrics.
+    """
+    with open(path) as f:
+        return json.load(f)
+
+
+def extract_epoch_metrics(history: dict):
+    """
+    Pull per-epoch train/val accuracy from a loaded history dict.
+
+    Args:
+        history (dict): Loaded JSON history dict from load_history().
+
+    Returns:
+        tuple:
+            epochs     (list[int])   — epoch numbers
+            train_acc  (list[float]) — training accuracy per epoch
+            val_acc    (list[float]) — validation accuracy per epoch
+    """
+    metrics   = history["metrics"]["epoch_metrics"]
+    epochs    = [m["epoch"]               for m in metrics]
+    train_acc = [m["train_accuracy"]      for m in metrics]
+    val_acc   = [m["validation_accuracy"] for m in metrics]
+    return epochs, train_acc, val_acc
+
+
+def load_model(dropout_prob: float, weights_path: Path) -> torch.nn.Module:
+    """
+    Instantiate a CNN and load saved weights from a .pt file.
+
+    Args:
+        dropout_prob  (float): Dropout probability used when the model was trained.
+        weights_path  (Path):  Path to the saved state dict (.pt file).
+
+    Returns:
+        torch.nn.Module: Model with loaded weights in eval mode, on device.
+    """
+    model = CNN(dropout_prob=dropout_prob).to(device)
+    model.load_state_dict(torch.load(weights_path, map_location=device))
+    model.eval()
+    return model
