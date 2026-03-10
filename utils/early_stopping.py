@@ -7,8 +7,9 @@ class EarlyStopping:
     Tracks the best validation loss and stops training when
     it has not improved for 'patience' epochs.
     """
-    def __init__(self, patience: int):
+    def __init__(self, patience: int, min_delta=0.0):
         self.patience = patience
+        self.min_delta = min_delta
         self.best_val_loss = float("inf")
         self.best_epoch = None
         self.best_model_state = None
@@ -19,7 +20,7 @@ class EarlyStopping:
         Update early stopping state for a new epoch.
         Returns True if training should stop.
         """
-        if val_loss < self.best_val_loss:
+        if val_loss < self.best_val_loss - self.min_delta:
             self.best_val_loss = val_loss
             self.best_epoch = epoch
             self.best_model_state = copy.deepcopy(model.state_dict())

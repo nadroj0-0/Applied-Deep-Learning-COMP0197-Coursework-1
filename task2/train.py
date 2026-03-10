@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.common import *
 import torch
 
@@ -6,16 +9,17 @@ MODEL_DIR = Path(__file__).parent / "models"
 
 TRAIN_CONFIG = {
     "seed": 42,
-    "epochs": 50,
+    "epochs": 100,
     "optimiser": "SGD",
-    "lr": 0.001,
+    "lr": 0.01,
     "momentum": 0.9,
     "weight_decay": 1e-4,
     "batch_size": 64,
     "validation_fraction": 0.2,
     "mixup_alpha": 0.4,
-    "label_smoothing": 0.1,
-    "early_stopping_patience": 5
+    "label_smoothing": 0.05,
+    "early_stopping_patience": 5,
+    "early_stopping_min_delta": 1e-4
 }
 
 
@@ -60,7 +64,7 @@ def main():
     for name, step_fn, params in experiments:
         print(f"\nRunning experiment: {name}")
         full_train(name, images,labels,train_loader,val_loader,cfg["optimiser"],
-                   epochs=cfg["epochs"], model_dir=MODEL_DIR, config=TRAIN_CONFIG,
+                   epochs=cfg["epochs"], model_dir=MODEL_DIR, config=cfg,
                    training_step=step_fn,**params,lr=cfg["lr"],momentum=cfg["momentum"],
                    weight_decay=cfg["weight_decay"]
         )

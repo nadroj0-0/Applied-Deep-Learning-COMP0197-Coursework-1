@@ -161,7 +161,7 @@ def mixup_data(inputs, labels, alpha):
     alpha  : Beta distr param
     """
     if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
+        lam = torch.distributions.Beta(alpha, alpha).sample().item()
     else:
         lam = 1.0
     batch_size = inputs.size(0)
@@ -251,7 +251,7 @@ def evaluate_model(data_loader, model, criterion):
     return average_loss, accuracy
 
 def train_model(epochs, train_loader, val_loader, model, criterion, optim_method,
-                training_step=baseline_step,  early_stopping_patience=None, **kwargs):
+                training_step=baseline_step,  early_stopping_patience=None,early_stopping_min_delta=0.0, **kwargs):
     # Training
     print('\nStarting training...')
     # num_epochs = 50
@@ -262,7 +262,7 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
     early_stopping_enabled = (
             early_stopping_patience is not None and early_stopping_patience > 0
     )
-    early_stopper = EarlyStopping(early_stopping_patience) if early_stopping_enabled else None
+    early_stopper = EarlyStopping(early_stopping_patience,min_delta=early_stopping_min_delta) if early_stopping_enabled else None
     for epoch in range(epochs):
         model.train()
         #epoch_loss = 0
@@ -332,16 +332,23 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
     print('Training finished.')
     if early_stopper and early_stopper.stopped_epoch is None:
         early_stopper.stopped_epoch = epochs
+    best_val_accuracy = None
     if early_stopper and early_stopper.best_model_state is not None:
         model.load_state_dict(early_stopper.best_model_state)
         print("Restored best model from early stopping.")
         print(f"Best validation loss {early_stopper.best_val_loss:.4f} at epoch {early_stopper.best_epoch}")
+        for m in history["epoch_metrics"]:
+            if m["epoch"] == early_stopper.best_epoch:
+                best_val_accuracy = m["validation_accuracy"]
+                break
     if early_stopping_enabled:
         history["early_stopping"] = {
             "enabled": True,
             "patience": early_stopper.patience,
+            "min_delta": early_stopper.min_delta,
             "best_epoch": early_stopper.best_epoch,
             "best_validation_loss": early_stopper.best_val_loss,
+            "best_validation_accuracy": best_val_accuracy,
             "stopped_epoch": early_stopper.stopped_epoch
         }
     #return batch_losses, epoch_losses
@@ -384,12 +391,17 @@ def full_train(name, images, labels, train_loader, val_loader, method, epochs, m
     model, outputs = init_model(images, dropout_prob)
     criterion, loss = init_loss(outputs, labels)
     #optim_method = init_optimiser(model, 'SGD', lr=0.001, momentum=0.9)
-    optim_method = init_optimiser(model, method, **kwargs)
+    # separate optimiser kwargs from training-step kwargs
+    optimiser_keys = {"lr", "momentum", "weight_decay", "dampening", "nesterov"}
+    optimiser_kwargs = {k: v for k, v in kwargs.items() if k in optimiser_keys}
+    training_kwargs = {k: v for k, v in kwargs.items() if k not in optimiser_keys}
+    optim_method = init_optimiser(model, method, **optimiser_kwargs)
     #batch_losses, epoch_losses = train_model(epochs, train_loader, model, criterion, optim_method)
     history = train_model(epochs, train_loader, val_loader, model, criterion,
                           optim_method, training_step=training_step,
                           early_stopping_patience=config.get("early_stopping_patience") if config else None,
-                          **(kwargs or {}))
+                          early_stopping_min_delta=config.get("early_stopping_min_delta") if config else 0.0,
+                          **training_kwargs)
     model_path = save_model(model, name, model_dir)
     history_path = save_history(history, name, 'train', model, model_dir, config=config)
     end_time = time.time()
@@ -427,7 +439,7 @@ def extract_epoch_metrics(history: dict):
     """
     metrics   = history["metrics"]["epoch_metrics"]
     epochs    = [m["epoch"]               for m in metrics]
-    train_acc = [m["train_accuracy"]      for m in metrics]
+    train_acc = [m.get("train_accuracy")      for m in metrics]
     val_acc   = [m["validation_accuracy"] for m in metrics]
     return epochs, train_acc, val_acc
 
@@ -447,3 +459,72 @@ def load_model(dropout_prob: float, weights_path: Path) -> torch.nn.Module:
     model.load_state_dict(torch.load(weights_path, map_location=device))
     model.eval()
     return model
+
+def evaluate_test_set(model, test_loader):
+    """
+    Evaluate a trained model on the test dataset.
+    Args:
+        model (torch.nn.Module)
+        test_loader (DataLoader)
+    Returns:
+        dict containing test_loss and test_accuracy
+    """
+    criterion = nn.CrossEntropyLoss()
+    test_loss, test_acc = evaluate_model(test_loader, model, criterion)
+    print("\nTest performance")
+    print(f"test_loss={test_loss:.4f}")
+    print(f"test_acc={test_acc:.4f}")
+    return {"test_loss": test_loss, "test_accuracy": test_acc}
+
+
+def run_test_evaluation(model, test_dataset, batch_size, name, model_dir,config=None):
+    """
+    Complete test evaluation pipeline.
+    Builds test loader → evaluates model → attaches metrics → saves history.
+    Args:
+        model (torch.nn.Module)
+        test_dataset
+        batch_size (int)
+        history (dict)
+        experiment_name (str)
+        model_dir (Path)
+        config (dict)
+    Returns:
+        dict: test metrics
+    """
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    test_metrics = evaluate_test_set(model, test_loader)
+    history_path = save_history(test_metrics, name, "test", model, model_dir, config=config)
+    return test_metrics, history_path
+
+def evaluate_confidence(model, data_loader):
+    """
+    Compute mean max softmax confidence across a dataset.
+    A well-calibrated model produces lower confidence than an overfit one.
+
+    Args:
+        model       (torch.nn.Module): Trained model in eval mode.
+        data_loader (DataLoader):      Dataset to evaluate over.
+
+    Returns:
+        float: Mean of the maximum softmax probability across all samples.
+    """
+    model.eval()
+    total_confidence = 0.0
+    total_samples    = 0
+    with torch.no_grad():
+        for inputs, _ in data_loader:
+            inputs   = inputs.to(device)
+            logits   = model(inputs)
+            probs    = torch.softmax(logits, dim=1)
+            max_prob = probs.max(dim=1).values
+            total_confidence += max_prob.sum().item()
+            total_samples    += inputs.size(0)
+    return total_confidence / total_samples
+
+def save_json(data, path):
+    """
+    Save dictionary as formatted JSON.
+    """
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)

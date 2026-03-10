@@ -249,3 +249,67 @@ def generate_gap_plot(
     img = img.resize((WIDTH, HEIGHT), Image.LANCZOS)
     img.save(save_path)
     print(f"Plot saved to: {save_path}")
+
+def generate_gap_per_epoch_plot(
+    b_epochs, b_train_acc, b_val_acc,
+    r_epochs, r_train_acc, r_val_acc,
+    save_path: Path
+):
+    """
+    Plot the generalisation gap (train - val accuracy) per epoch for
+    both models, using each model's own epoch list so they never misalign.
+
+    Args:
+        b_epochs    (list[int]):   Baseline epoch numbers.
+        b_train_acc (list[float]): Baseline training accuracy per epoch.
+        b_val_acc   (list[float]): Baseline validation accuracy per epoch.
+        r_epochs    (list[int]):   Regularised epoch numbers.
+        r_train_acc (list[float]): Regularised training accuracy per epoch.
+        r_val_acc   (list[float]): Regularised validation accuracy per epoch.
+        save_path   (Path):        Output file path for the PNG.
+    """
+    b_gap = [t - v for t, v in zip(b_train_acc, b_val_acc)]
+    r_gap = [t - v for t, v in zip(r_train_acc, r_val_acc)]
+
+    all_gap = b_gap + r_gap
+    min_gap = min(all_gap)
+    max_gap = max(all_gap)
+    pad     = (max_gap - min_gap) * 0.12
+    min_gap -= pad
+    max_gap += pad
+
+    # use the longer epoch list for the x-axis
+    epochs = b_epochs if len(b_epochs) >= len(r_epochs) else r_epochs
+
+    font_title = ImageFont.load_default(size=70)
+    font_med   = ImageFont.load_default(size=55)
+    font_small = ImageFont.load_default(size=45)
+    font       = ImageFont.load_default(size=60)
+
+    sx, sy = make_scalers(epochs, min_gap, max_gap)
+    ticks  = nice_ticks(min_gap, max_gap)
+
+    img  = Image.new("RGB", (WIDTH * 2, HEIGHT * 2), BG)
+    draw = ImageDraw.Draw(img)
+
+    draw_axes_and_grid(draw, sx, sy, epochs, ticks, font=font_med)
+
+    # each model uses its own epoch list so x positions are correct
+    b_sx, b_sy = make_scalers(b_epochs, min_gap, max_gap)
+    r_sx, r_sy = make_scalers(r_epochs, min_gap, max_gap)
+    draw_line_curve(draw, b_sx, b_sy, b_gap, B_TRAIN, width=6)
+    draw_line_curve(draw, r_sx, r_sy, r_gap, R_TRAIN, width=6)
+
+    entries = [
+        (B_TRAIN, "Baseline Gap"),
+        (R_TRAIN, "Regularised Gap"),
+    ]
+    draw_legend(draw, entries, M_LEFT*2 + 50, M_TOP*2 + 20, font=font_med)
+
+    draw.text((WIDTH*2 // 2 - 260, 22),              "Generalisation Gap per Epoch", fill=TEXT_C, font=font_title)
+    draw.text((WIDTH*2 // 2 - 25,  HEIGHT*2 - M_BOTTOM*2 + 80), "Epoch",           fill=TEXT_C, font=font)
+    draw.text((12, HEIGHT*2 // 2 - 10),              "Train - Val Accuracy",        fill=TEXT_C, font=font_small)
+
+    img = img.resize((WIDTH, HEIGHT), Image.LANCZOS)
+    img.save(save_path)
+    print(f"Gap-per-epoch plot saved to: {save_path}")

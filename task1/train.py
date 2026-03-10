@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.common import *
 
 MODEL_DIR = Path(__file__).parent / "models"
@@ -23,7 +26,7 @@ def main():
             "It defines the experiment hyperparameters."
         )
     generator = init_seed(cfg)
-    train_dataset, test_dataset = download_data()
+    train_dataset, _ = download_data()
     images, labels, train_loader, val_loader = load_data_pytorch(
         train_dataset, batch_size=cfg['batch_size'],
         validation_fraction=cfg['validation_fraction'],
@@ -34,7 +37,7 @@ def main():
     base_model, base_history, base_model_path, base_history_path = full_train(
         'baseline', images, labels, train_loader, val_loader,
         cfg['optimiser'], epochs=cfg['epochs'], model_dir=MODEL_DIR,
-        config=TRAIN_CONFIG, lr=cfg['lr'], momentum=cfg['momentum']
+        config=cfg, lr=cfg['lr'], momentum=cfg['momentum']
     )
     print('\nBase model:')
     print(base_model)
@@ -43,7 +46,7 @@ def main():
     reg_model, reg_history, reg_model_path, reg_history_path = full_train(
         'regularised', images, labels, train_loader, val_loader,
         cfg['optimiser'], epochs=cfg['epochs'], model_dir=MODEL_DIR,
-        config=TRAIN_CONFIG, lr=cfg['lr'], momentum=cfg['momentum'],
+        config=cfg, lr=cfg['lr'], momentum=cfg['momentum'],
         weight_decay=cfg['weight_decay'], dropout_prob=cfg['reg_dropout']
     )
     print('\nRegularised model:')
