@@ -111,7 +111,7 @@ def staged_search(search_space,images,labels,train_loader,val_loader,method, mod
             sessions = prune(sessions, keep=keep)
             print(f"Pruned to {len(sessions)} models")
             # --- inject new random models (exploration) ---
-            if new > 0:
+            if new > 0 and stage_idx < len(schedule) - 1:
                 print(f"Injecting {new} new models")
                 for j in range(new):
                     cfg = sample_config(base_config, search_space)

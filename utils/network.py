@@ -12,11 +12,13 @@ class CNN(nn.Module):
             # padding=1 ensures spatial size stays the same
             # Input shape:  (batch_size, 3, 32, 32), Output shape: (batch_size, 32, 32, 32)
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             # ReLU activation introduces non-linearity.
             nn.ReLU(),
             # 2nd convolution layer
             # Input:  (batch, 32, 32, 32), Output: (batch, 64, 32, 32)
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             # MaxPool to downsample the spatial dimensions.
             # kernel_size=2 halves height and width, (batch, 64, 32, 32) → (batch, 64, 16, 16)
@@ -25,8 +27,10 @@ class CNN(nn.Module):
             # Input channels = 64 (from previous layer), Output channels = 128 feature maps.
             # Input:  (batch, 64, 16, 16), Output: (batch, 128, 16, 16)
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             # Second spatial downsampling
             # (batch, 128, 16, 16) → (batch, 128, 8, 8)
@@ -34,7 +38,12 @@ class CNN(nn.Module):
             # 5th and 6th convolution layer
             # Input:  (batch, 128, 8, 8), Output: (batch, 256, 8, 8)
             nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
             # 3rd spatial downsampling
             # (batch, 256, 8, 8) → (batch, 256, 4, 4)
             nn.MaxPool2d(2)

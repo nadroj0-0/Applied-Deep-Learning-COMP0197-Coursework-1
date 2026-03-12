@@ -31,9 +31,9 @@ MIXUP_SMOOTH_SEARCH_SPACE = {
 }
 
 HYPER_PARAM_SEARCH_SCHEDULE = [
-    {"epochs":10, "keep":5, "new":0},
-    {"epochs":10, "keep":2, "new":3},
-    {"epochs":20, "keep":1, "new":1}
+    {"epochs":10, "keep":5, "new":3},
+    {"epochs":10, "keep":2, "new":1},
+    {"epochs":20, "keep":1, "new":0}
 ]
 HYPER_PARAM_INIT_MODELS = 10
 
