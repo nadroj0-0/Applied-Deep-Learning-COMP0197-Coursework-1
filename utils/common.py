@@ -16,6 +16,7 @@ from .early_stopping import EarlyStopping
 
 
 
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
@@ -176,8 +177,8 @@ def mixup_step(model, inputs, labels, criterion, **kwargs):
     """
     MixUp training step.
     """
-    alpha = kwargs["alpha"]
-    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, alpha)
+    mixup_alpha = kwargs["mixup_alpha"]
+    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, mixup_alpha)
     outputs = model(mixed_inputs)
     loss = lam * criterion(outputs, y_a) + (1 - lam) * criterion(outputs, y_b)
     return loss, outputs
@@ -206,9 +207,9 @@ def smoothing_step(model, inputs, labels, criterion, **kwargs):
     """
     Label smoothing training step.
     """
-    smoothing = kwargs["smoothing"]
+    label_smoothing = kwargs["label_smoothing"]
     outputs = model(inputs)
-    loss = label_smoothing_loss(outputs, labels, smoothing)
+    loss = label_smoothing_loss(outputs, labels, label_smoothing)
     return loss, outputs
 
 
@@ -216,12 +217,12 @@ def mixup_smoothing_step(model, inputs, labels, criterion, **kwargs):
     """
     MixUp + label smoothing.
     """
-    alpha = kwargs["alpha"]
-    smoothing = kwargs["smoothing"]
-    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, alpha)
+    mixup_alpha = kwargs["mixup_alpha"]
+    label_smoothing = kwargs["label_smoothing"]
+    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, mixup_alpha)
     outputs = model(mixed_inputs)
-    loss_a = label_smoothing_loss(outputs, y_a, smoothing)
-    loss_b = label_smoothing_loss(outputs, y_b, smoothing)
+    loss_a = label_smoothing_loss(outputs, y_a, label_smoothing)
+    loss_b = label_smoothing_loss(outputs, y_b, label_smoothing)
     loss = lam * loss_a + (1 - lam) * loss_b
     return loss, outputs
 
@@ -385,8 +386,8 @@ def save_history(history, name, stage, model, model_dir, config=None):
     print(f'History saved to: {history_path}')
     return history_path
 
-def full_train(name, images, labels, train_loader, val_loader, method, epochs, model_dir,
-               config=None, dropout_prob=0.0, training_step=baseline_step, **kwargs):
+def full_train_old(name, images, labels, train_loader, val_loader, method, epochs, model_dir,
+               config=None, dropout_prob=0.0, training_step=baseline_step, save_outputs=True,  **kwargs):
     start_time = time.time()
     model, outputs = init_model(images, dropout_prob)
     criterion, loss = init_loss(outputs, labels)
@@ -402,13 +403,31 @@ def full_train(name, images, labels, train_loader, val_loader, method, epochs, m
                           early_stopping_patience=config.get("early_stopping_patience") if config else None,
                           early_stopping_min_delta=config.get("early_stopping_min_delta") if config else 0.0,
                           **training_kwargs)
-    model_path = save_model(model, name, model_dir)
-    history_path = save_history(history, name, 'train', model, model_dir, config=config)
+    if save_outputs:
+        model_path = save_model(model, name, model_dir)
+        history_path = save_history(history, name, 'train', model, model_dir, config=config)
     end_time = time.time()
     elapsed = end_time - start_time
     print(f"\n{name} training completed in {elapsed:.2f} seconds")
     #return model, batch_losses, epoch_losses
     return model, history, model_path, history_path
+
+def full_train(name, images, labels, train_loader, val_loader, method, epochs, model_dir,
+               config=None, dropout_prob=0.0, training_step=baseline_step, save_outputs=True,
+               session=None,**kwargs):
+    from utils.training_session import create_training_session
+    start_time = time.time()
+    if session is None:
+        session = create_training_session(images, labels, method, dropout_prob, config, training_step, **kwargs)
+    session.train(epochs,train_loader,val_loader)
+    model_path , history_path = None, None
+    if save_outputs:
+        model_path = save_model(session.model, name, model_dir)
+        history_path = save_history(session.history, name, "train", session.model, model_dir, config=config)
+    end_time = time.time()
+    elapsed = end_time - start_time
+    print(f"\n{name} training completed in {elapsed:.2f} seconds")
+    return session.model, session.history, model_path, history_path
 
 def load_history(path: Path) -> dict:
     """

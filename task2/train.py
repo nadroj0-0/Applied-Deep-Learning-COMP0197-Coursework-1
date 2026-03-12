@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.common import *
 import torch
+from utils.hyperparameter import staged_search
 
 
 MODEL_DIR = Path(__file__).parent / "models"
@@ -21,6 +22,20 @@ TRAIN_CONFIG = {
     "early_stopping_patience": 5,
     "early_stopping_min_delta": 1e-4
 }
+
+MIXUP_SMOOTH_SEARCH_SPACE = {
+    "lr": (1e-4, 5e-2, "log"),
+    "weight_decay": (1e-6, 1e-3, "log"),
+    "mixup_alpha": (0.1, 0.8, "uniform"),
+    "label_smoothing": (0.01, 0.2, "uniform"),
+}
+
+HYPER_PARAM_SEARCH_SCHEDULE = [
+    {"epochs":10, "keep":5, "new":0},
+    {"epochs":10, "keep":2, "new":3},
+    {"epochs":20, "keep":1, "new":1}
+]
+HYPER_PARAM_INIT_MODELS = 10
 
 
 def main():
@@ -41,6 +56,22 @@ def main():
         generator=generator
     )
 
+    # -------------------------------------------------
+    # Hyperparameter search for MixUp + Label Smoothing
+    # -------------------------------------------------
+    best_mixup_smooth_cfg = None
+    print("\nStarting mixup plus smoothing hyperparameter search (MixUp + Label Smoothing)")
+
+    best_mixup_smooth_cfg = staged_search(MIXUP_SMOOTH_SEARCH_SPACE, images, labels, train_loader, val_loader,
+                                           cfg["optimiser"], MODEL_DIR, base_config=cfg,
+                                           training_step=mixup_smoothing_step, schedule=HYPER_PARAM_SEARCH_SCHEDULE,
+                                           initial_models=HYPER_PARAM_INIT_MODELS, search_name="mixup_smoothing_hyperparameter_search")
+
+    print("\nBest configuration found:")
+    print(best_mixup_smooth_cfg)
+    if best_mixup_smooth_cfg is not None:
+        cfg = best_mixup_smooth_cfg.copy()
+
     # ---- test MixUp ----
     sample_images = images.to(device)
     sample_labels = labels.to(device)
@@ -57,9 +88,9 @@ def main():
     print("Label smoothing loss:", loss)
 
     experiments = [
-        ("baseline_mixup", mixup_step, {"alpha": cfg["mixup_alpha"]}),
-        ("baseline_smooth", smoothing_step, {"smoothing": cfg["label_smoothing"]}),
-        ("baseline_mixup_smooth", mixup_smoothing_step, {"alpha": cfg["mixup_alpha"], "smoothing": cfg["label_smoothing"]}),
+        ("baseline_mixup", mixup_step, {"mixup_alpha": cfg["mixup_alpha"]}),
+        ("baseline_smooth", smoothing_step, {"label_smoothing": cfg["label_smoothing"]}),
+        ("baseline_mixup_smooth", mixup_smoothing_step, {"mixup_alpha": cfg["mixup_alpha"], "label_smoothing": cfg["label_smoothing"]}),
     ]
     for name, step_fn, params in experiments:
         print(f"\nRunning experiment: {name}")
