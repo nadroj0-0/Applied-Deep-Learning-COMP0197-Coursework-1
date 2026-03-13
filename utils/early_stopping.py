@@ -15,6 +15,7 @@ class EarlyStopping:
         self.best_model_state = None
         self.counter = 0
         self.stopped_epoch = None
+        self.triggered = False
     def update(self, val_loss, model, epoch):
         """
         Update early stopping state for a new epoch.

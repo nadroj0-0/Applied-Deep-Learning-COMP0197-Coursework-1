@@ -23,14 +23,14 @@ class Leaderboard:
     def __init__(self, sessions):
         self.entries = []
         for cfg, session in sessions:
-            loss = session.history["epoch_metrics"][-1]["validation_loss"]
+            loss = min(m["validation_loss"] for m in session.history["epoch_metrics"])
             self.entries.append({
                 "config": cfg,
                 "session": session,
                 "loss": loss
             })
     def add(self, cfg, session):
-        loss = session.history["epoch_metrics"][-1]["validation_loss"]
+        loss = min(m["validation_loss"] for m in session.history["epoch_metrics"])
         self.entries.append({
             "config": cfg,
             "session": session,
@@ -71,7 +71,7 @@ def select_best(sessions):
     best_loss = float("inf")
     best = None
     for cfg, session in sessions:
-        loss = session.history["epoch_metrics"][-1]["validation_loss"]
+        loss = min(m["validation_loss"] for m in session.history["epoch_metrics"])
         if loss < best_loss:
             best_loss = loss
             best = (cfg, session)
@@ -84,48 +84,52 @@ def staged_search(search_space,images,labels,train_loader,val_loader,method, mod
     """
     Generic successive-halving hyperparameter search.
     """
+    search_early_stop_patience = 5
+    search_early_min_delta = 0.001
     if schedule is None:
         schedule = [
-            {"epochs": 10, "keep": 5, "new": 0},
-            {"epochs": 10, "keep": 2, "new": 3},
-            {"epochs": 20, "keep": 1, "new": 1},
+            {"epochs": 10, "keep": math.ceil(initial_models / 2)},
+            {"epochs": 10, "keep": math.ceil(initial_models / 4)},
+            {"epochs": 20, "keep": 1}
         ]
     sessions = []
-    run_records = []
+    run_records = {}
     # --- initialise configs ---
     for i in range(initial_models):
         cfg = sample_config(base_config, search_space)
         session = create_training_session(images, labels, method, cfg.get("reg_dropout", dropout_prob), cfg,
                                           training_step, **cfg)
+        session.id = f"model_{i}"
+        session.early_stopped = False
+        session.config["early_stopping_patience"] = search_early_stop_patience
+        session.config["early_stopping_min_delta"] = search_early_min_delta
         sessions.append((cfg, session))
     # --- run remaining stages ---
     for stage_idx, stage in enumerate(schedule):
         epochs, keep = stage["epochs"], stage["keep"]
-        new = stage.get("new", 0)
         print(f"\nStage {stage_idx}: training {len(sessions)} models for {epochs} epochs")
         for i, (cfg, session) in enumerate(sessions):
-            full_train(name=f"search_stage{stage_idx}_{i}",images=images,labels=labels,train_loader=train_loader,
-                       val_loader=val_loader,method=method,epochs=epochs,model_dir=model_dir,config=cfg,
-                       dropout_prob=cfg.get("reg_dropout", dropout_prob),training_step=training_step,save_outputs=False,session=session)
+            if not session.early_stopped:
+                full_train(name=f"search_stage{stage_idx}_{i}",images=images,labels=labels,train_loader=train_loader,
+                           val_loader=val_loader,method=method,epochs=epochs,model_dir=model_dir,config=cfg,
+                           dropout_prob=cfg.get("reg_dropout", dropout_prob),training_step=training_step,
+                           save_outputs=False,session=session)
+            else:
+                print(f"search_stage{stage_idx}_{i} early stopped - no longer training ")
+            if session.id not in run_records:
+                run_records[session.id] = {
+                    "id": session.id,
+                    "config": cfg.copy(),
+                    "total_epochs": None,
+                    "epoch_metrics": []
+                }
+            run_records[session.id]["epoch_metrics"] = session.history["epoch_metrics"]
+            run_records[session.id]["total_epochs"] = session.epoch
         if keep is not None:
             sessions = prune(sessions, keep=keep)
             print(f"Pruned to {len(sessions)} models")
-            # --- inject new random models (exploration) ---
-            if new > 0 and stage_idx < len(schedule) - 1:
-                print(f"Injecting {new} new models")
-                for j in range(new):
-                    cfg = sample_config(base_config, search_space)
-                    session = create_training_session(images,labels,method, cfg.get("reg_dropout", dropout_prob),cfg,
-                                                      training_step,**cfg)
-                    sessions.append((cfg, session))
-    for cfg, session in sessions:
-        run_records.append({
-            "config": cfg.copy(),
-            "total_epochs": session.epoch,
-            "epoch_metrics": session.history["epoch_metrics"]
-        })
     best_cfg, best_session = select_best(sessions)
-    best_metrics = best_session.history["epoch_metrics"][-1]
+    best_metrics = min(best_session.history["epoch_metrics"], key=lambda m: m["validation_loss"])
     search_summary = {
         "search_type": "successive_halving",
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -135,7 +139,7 @@ def staged_search(search_space,images,labels,train_loader,val_loader,method, mod
         "best_config": best_cfg,
         "best_validation_loss": best_metrics["validation_loss"],
         "best_validation_accuracy": best_metrics["validation_accuracy"],
-        "runs": run_records
+        "runs": list(run_records.values())
     }
     model_dir.mkdir(exist_ok=True)
     summary_path = model_dir / f"{search_name}.json"

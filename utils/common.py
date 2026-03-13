@@ -342,9 +342,11 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
             if m["epoch"] == early_stopper.best_epoch:
                 best_val_accuracy = m["validation_accuracy"]
                 break
+        early_stopper.triggered = True
     if early_stopping_enabled:
         history["early_stopping"] = {
             "enabled": True,
+            "triggered": early_stopper.triggered,
             "patience": early_stopper.patience,
             "min_delta": early_stopper.min_delta,
             "best_epoch": early_stopper.best_epoch,

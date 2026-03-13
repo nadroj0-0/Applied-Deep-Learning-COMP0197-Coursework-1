@@ -1,4 +1,5 @@
 import sys
+import math
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.common import *
@@ -29,13 +30,13 @@ REG_SEARCH_SPACE = {
     "weight_decay": (1e-6, 1e-3, "log"),
     "reg_dropout": (0.1, 0.7, "uniform")
 }
-
+HYPER_PARAM_INIT_MODELS = 20
 HYPER_PARAM_SEARCH_SCHEDULE = [
-    {"epochs":10, "keep":5, "new":3},
-    {"epochs":10, "keep":2, "new":1},
-    {"epochs":20, "keep":1, "new":0}
+    {"epochs": 10, "keep": math.ceil(HYPER_PARAM_INIT_MODELS / 2)},
+    {"epochs": 10, "keep": math.ceil(HYPER_PARAM_INIT_MODELS / 4)},
+    {"epochs": 20, "keep": 1},
 ]
-HYPER_PARAM_INIT_MODELS = 10
+
 
 def main():
     try:
