@@ -84,8 +84,6 @@ def staged_search(search_space,images,labels,train_loader,val_loader,method, mod
     """
     Generic successive-halving hyperparameter search.
     """
-    search_early_stop_patience = 5
-    search_early_min_delta = 0.001
     if schedule is None:
         schedule = [
             {"epochs": 10, "keep": math.ceil(initial_models / 2)},
@@ -100,22 +98,16 @@ def staged_search(search_space,images,labels,train_loader,val_loader,method, mod
         session = create_training_session(images, labels, method, cfg.get("reg_dropout", dropout_prob), cfg,
                                           training_step, **cfg)
         session.id = f"model_{i}"
-        session.early_stopped = False
-        session.config["early_stopping_patience"] = search_early_stop_patience
-        session.config["early_stopping_min_delta"] = search_early_min_delta
         sessions.append((cfg, session))
     # --- run remaining stages ---
     for stage_idx, stage in enumerate(schedule):
         epochs, keep = stage["epochs"], stage["keep"]
         print(f"\nStage {stage_idx}: training {len(sessions)} models for {epochs} epochs")
         for i, (cfg, session) in enumerate(sessions):
-            if not session.early_stopped:
-                full_train(name=f"search_stage{stage_idx}_{i}",images=images,labels=labels,train_loader=train_loader,
-                           val_loader=val_loader,method=method,epochs=epochs,model_dir=model_dir,config=cfg,
-                           dropout_prob=cfg.get("reg_dropout", dropout_prob),training_step=training_step,
-                           save_outputs=False,session=session)
-            else:
-                print(f"search_stage{stage_idx}_{i} early stopped - no longer training ")
+            full_train(name=f"search_stage{stage_idx}_{i}", images=images, labels=labels, train_loader=train_loader,
+                       val_loader=val_loader, method=method, epochs=epochs, model_dir=model_dir, config=cfg,
+                       dropout_prob=cfg.get("reg_dropout", dropout_prob), training_step=training_step,
+                       save_outputs=False, session=session)
             if session.id not in run_records:
                 run_records[session.id] = {
                     "id": session.id,

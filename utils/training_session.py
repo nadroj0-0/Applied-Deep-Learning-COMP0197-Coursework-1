@@ -33,8 +33,6 @@ class TrainingSession:
         self.history["batch_losses"].extend(history["batch_losses"])
         if history.get("early_stopping") is not None:
             self.history["early_stopping"] = history["early_stopping"]
-            if hasattr(self, "early_stopped") and history["early_stopping"].get("triggered"):
-                self.early_stopped = True
         self.epoch += len(history["epoch_metrics"])
         return history
 

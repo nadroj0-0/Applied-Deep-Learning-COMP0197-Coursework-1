@@ -313,6 +313,7 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
             stop = early_stopper.update(val_loss, model, epoch + 1)
             if stop:
                 print(f"Early stopping triggered at epoch {epoch + 1}")
+                early_stopper.triggered = True
                 break
         if accuracy_valid:
             print(
@@ -342,7 +343,6 @@ def train_model(epochs, train_loader, val_loader, model, criterion, optim_method
             if m["epoch"] == early_stopper.best_epoch:
                 best_val_accuracy = m["validation_accuracy"]
                 break
-        early_stopper.triggered = True
     if early_stopping_enabled:
         history["early_stopping"] = {
             "enabled": True,
