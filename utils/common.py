@@ -24,6 +24,29 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 
 
+class Cutout:
+    """
+    Randomly masks a square patch of an image tensor during training.
+    Forces the network to learn distributed representations rather than
+    relying on a single discriminative region.
+    Args:
+        size (int): Side length of the square patch to zero out.
+    """
+    def __init__(self, size=16):
+        self.size = size
+    def __call__(self, img):
+        h, w = img.shape[1], img.shape[2]
+        cx = torch.randint(0, w, (1,)).item()
+        cy = torch.randint(0, h, (1,)).item()
+        x1 = max(0, cx - self.size // 2)
+        x2 = min(w, cx + self.size // 2)
+        y1 = max(0, cy - self.size // 2)
+        y2 = min(h, cy + self.size // 2)
+        img = img.clone()
+        img[:, y1:y2, x1:x2] = 0.0
+        return img
+
+
 def set_seed(seed=None):
     """
     Set random seeds for reproducibility across Python, NumPy, and PyTorch.
@@ -53,15 +76,28 @@ def init_seed(cfg):
     cfg["seed"] = seed
     return generator
 
-def download_data():
+def download_data(augment=False):
     # Download the data
     print('Downloading CIFAR-10 dataset...')
-    transform = transforms.Compose([
+    if augment:
+        train_transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(32, padding=4),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            Cutout(size=16)
+        ])
+    else:
+        train_transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+    test_transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
-    train_dataset = datasets.CIFAR10(root=DATA_DIR, train=True, download=True, transform=transform)
-    test_dataset = datasets.CIFAR10(root=DATA_DIR, train=False, download=True, transform=transform)
+    train_dataset = datasets.CIFAR10(root=DATA_DIR, train=True, download=True, transform=train_transform)
+    test_dataset = datasets.CIFAR10(root=DATA_DIR, train=False, download=True, transform=test_transform)
     print('Dataset downloaded successfully.')
     return (train_dataset, test_dataset)
 

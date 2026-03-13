@@ -64,6 +64,7 @@ def main():
     if best_base_cfg is not None:
         cfg = best_base_cfg.copy()
         best_reg_cfg = best_base_cfg.copy()
+    init_seed(cfg)
     base_model, base_history, base_model_path, base_history_path = full_train(
         'baseline', images, labels, train_loader, val_loader,
         cfg['optimiser'], epochs=cfg['epochs'], model_dir=MODEL_DIR,
@@ -74,7 +75,17 @@ def main():
     print('\nBase final epoch metrics:')
     print(base_history['epoch_metrics'][-1])
 
-
+    generator = init_seed(cfg)
+    train_dataset_aug, _ = download_data(augment=True)
+    images, labels, train_loader, _ = load_data_pytorch(
+        train_dataset_aug, batch_size=cfg['batch_size'],
+        validation_fraction=cfg['validation_fraction'],
+        generator=generator)
+    generator = init_seed(cfg)
+    _, _, _, val_loader = load_data_pytorch(
+        train_dataset, batch_size=cfg['batch_size'],
+        validation_fraction=cfg['validation_fraction'],
+        generator=generator)
     print("\nStarting regularised hyperparameter search")
     best_reg_cfg = staged_search(REG_SEARCH_SPACE, images, labels, train_loader, val_loader,
                                       cfg["optimiser"], MODEL_DIR, base_config=best_reg_cfg,
@@ -84,6 +95,7 @@ def main():
     print(best_reg_cfg)
     if best_reg_cfg is not None:
         cfg = best_reg_cfg.copy()
+    init_seed(cfg)
     reg_model, reg_history, reg_model_path, reg_history_path = full_train(
         'regularised', images, labels, train_loader, val_loader,
         cfg['optimiser'], epochs=cfg['epochs'], model_dir=MODEL_DIR,
