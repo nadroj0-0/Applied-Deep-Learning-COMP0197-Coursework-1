@@ -1,27 +1,122 @@
 {
-    "config": {
-        "seed": 42,
-        "epochs": 100,
-        "optimiser": "SGD",
-        "lr": 0.01,
-        "momentum": 0.9,
-        "weight_decay": 0.0001,
-        "batch_size": 64,
-        "validation_fraction": 0.2,
-        "mixup_alpha": 0.4,
-        "label_smoothing": 0.05,
-        "early_stopping_patience": 5,
-        "early_stopping_min_delta": 0.0001
+    "baseline_fixed_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.02680966393455427,
+            "momentum": 0.8012347643388317,
+            "weight_decay": 1.897743576692889e-06,
+            "reg_dropout": 0.1580298261000784,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.3953452737796893,
+            "label_smoothing": 0.015661471693233366,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8681,
+        "peak_val_accuracy": 0.8681,
+        "noisy_test_metrics": {
+            "test_loss": 0.9110473844528199,
+            "test_accuracy": 0.7164
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.851,
+            "0.05": 0.8344,
+            "0.1": 0.7146,
+            "0.2": 0.4192,
+            "0.3": 0.2562
+        }
     },
-    "noisy_test_metrics": {
-        "test_loss": 0.8085582021713257,
-        "test_accuracy": 0.7545
+    "baseline_free_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.008284768840933803,
+            "momentum": 0.8047520434923068,
+            "weight_decay": 1.897743576692889e-06,
+            "reg_dropout": 0.1580298261000784,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.2925205228583835,
+            "label_smoothing": 0.05241004024827633,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8194,
+        "peak_val_accuracy": 0.8335,
+        "noisy_test_metrics": {
+            "test_loss": 0.880993962097168,
+            "test_accuracy": 0.7126
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.8221,
+            "0.05": 0.8056,
+            "0.1": 0.7164,
+            "0.2": 0.472,
+            "0.3": 0.2928
+        }
     },
-    "noise_robustness_curve": {
-        "0.0": 0.8011,
-        "0.05": 0.7973,
-        "0.1": 0.7561,
-        "0.2": 0.6115,
-        "0.3": 0.4416
+    "regularised_fixed_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.02680966393455427,
+            "momentum": 0.8012347643388317,
+            "weight_decay": 1.897743576692889e-06,
+            "reg_dropout": 0.1580298261000784,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.2925205228583835,
+            "label_smoothing": 0.05241004024827633,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8422,
+        "peak_val_accuracy": 0.8475,
+        "noisy_test_metrics": {
+            "test_loss": 1.2054857578277587,
+            "test_accuracy": 0.597
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.8395,
+            "0.05": 0.7864,
+            "0.1": 0.5957,
+            "0.2": 0.3026,
+            "0.3": 0.1881
+        }
+    },
+    "regularised_free_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.02680966393455427,
+            "momentum": 0.8012347643388317,
+            "weight_decay": 0.00026149160788015624,
+            "reg_dropout": 0.5188836369929362,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.3381753615625943,
+            "label_smoothing": 0.039541104964238495,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8565,
+        "peak_val_accuracy": 0.8808,
+        "noisy_test_metrics": {
+            "test_loss": 1.3117313568115234,
+            "test_accuracy": 0.5678
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.8772,
+            "0.05": 0.7984,
+            "0.1": 0.5723,
+            "0.2": 0.2547,
+            "0.3": 0.1836
+        }
     }
 }

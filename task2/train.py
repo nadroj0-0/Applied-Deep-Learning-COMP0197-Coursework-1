@@ -48,7 +48,7 @@ REG_FREE_SEARCH_SPACE = {
     "label_smoothing": (0.01, 0.2, "uniform"),
 }
 
-HYPER_PARAM_INIT_MODELS = 20
+HYPER_PARAM_INIT_MODELS = 5
 HYPER_PARAM_SEARCH_SCHEDULE = [
     {"epochs": 10, "keep": math.ceil(HYPER_PARAM_INIT_MODELS / 2)},
     {"epochs": 10, "keep": math.ceil(HYPER_PARAM_INIT_MODELS / 4)},

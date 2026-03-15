@@ -16,7 +16,7 @@ MODEL_DIR = TASK_DIR / "models" / "baseline_fixed_mixup_ls"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def print_analysis(history, noisy_test_metrics, noise_results):
+def print_analysis(history, noisy_test_metrics, noise_results, exp_name):
     """
     Print quantitative summary statistics to support the written technical analysis
     for Task 2.
@@ -38,7 +38,7 @@ def print_analysis(history, noisy_test_metrics, noise_results):
     final_val_acc = val_acc[-1] if val_acc else None
 
     print("=" * 60)
-    print("TASK 2 — QUANTITATIVE ANALYSIS SUMMARY")
+    print(f"{exp_name} — QUANTITATIVE ANALYSIS SUMMARY")
     print("=" * 60)
 
     print("\n--- Training Summary ---")
@@ -76,18 +76,20 @@ def print_analysis(history, noisy_test_metrics, noise_results):
         print(f"  Accuracy at highest noise : {end_acc:.4f}")
         print(f"  Total drop                : {start_acc - end_acc:.4f}")
 
-    print("\n--- Technical Analysis ---")
-    print("""
-[REPLACE THIS BLOCK WITH YOUR TASK 2 ANALYSIS COVERING:]
-  1. Why MixUp reduces memorisation and encourages smoother decision boundaries
-  2. Why label smoothing reduces overconfidence and overshooting
-  3. How early stopping prevented further validation degradation
-  4. What the noisy test and robustness curve show about generalisation
-  5. Whether robustness degrades gradually or sharply as noise increases
-    """)
     print("=" * 60)
 
-def evaluate_noisy_test(model, test_dataset, batch_size, name, config):
+def tech_analysis():
+    print("\n--- Technical Analysis ---")
+    print("""
+    [REPLACE THIS BLOCK WITH YOUR TASK 2 ANALYSIS COVERING:]
+      1. Why MixUp reduces memorisation and encourages smoother decision boundaries
+      2. Why label smoothing reduces overconfidence and overshooting
+      3. How early stopping prevented further validation degradation
+      4. What the noisy test and robustness curve show about generalisation
+      5. Whether robustness degrades gradually or sharply as noise increases
+        """)
+
+def evaluate_noisy_test(model, test_dataset, batch_size, name, config, exp_dir):
     """
     Evaluate trained model on noisy test data.
     """
@@ -98,37 +100,54 @@ def evaluate_noisy_test(model, test_dataset, batch_size, name, config):
     print(f"test_loss={test_loss:.4f}")
     print(f"test_accuracy={test_acc:.4f}")
     test_metrics = {"test_loss": test_loss,"test_accuracy": test_acc}
-    history_path = save_history(test_metrics,name,"noisy_test",model,MODEL_DIR,config=config)
+    history_path = save_history(test_metrics,name,"noisy_test",model,exp_dir,config=config)
     return test_metrics, history_path
 
 
 
 def main():
-    # Load training history
-    history = load_history(MODEL_DIR / "baseline_fixed_mixup_ls_train_history.json")
-    config = history["config"]
-    batch_size = config["batch_size"]
-    # Load trained model
-    model = load_model(dropout_prob=config.get("dropout_prob", 0.0), weights_path=MODEL_DIR / "baseline_fixed_mixup_ls_model.pt")
-    print("Model loaded:", type(model).__name__)
+    EXPERIMENTS = {
+        "baseline_fixed_mixup_ls": {"dropout_prob": 0.0},
+        "baseline_free_mixup_ls": {"dropout_prob": 0.0},
+        "regularised_fixed_mixup_ls": {"dropout_prob": None},  # read from config
+        "regularised_free_mixup_ls": {"dropout_prob": None},
+    }
     # Load CIFAR10
     _, test_dataset = download_data()
-    # Evaluate on noisy test set
-    noisy_test_metrics, _ = evaluate_noisy_test(model,test_dataset,batch_size,"baseline_fixed_mixup_ls",config)
-    # noise robustness curve
-    noise_results = evaluate_noise_robustness(model, test_dataset, batch_size, TASK_DIR / "noise_robustness.json")
-    # Generate MixUp demo figure
-    save_mixup_demo(mixup_data,test_dataset,TASK_DIR / "robustness_demo.png",alpha=config.get("mixup_alpha", 0.4),
-                    device=device)
-    # Print analysis summary
-    print_analysis(history, noisy_test_metrics, noise_results)
-    summary = {
-        "config": config,
-        "noisy_test_metrics": noisy_test_metrics,
-        "noise_robustness_curve": noise_results
-    }
+    summary = {}
+    for exp_name, opts in EXPERIMENTS.items():
+        print(f"\n{'=' * 60}")
+        print(f"Evaluating: {exp_name}")
+        print(f"{'=' * 60}")
+        exp_dir = TASK_DIR / "models" / exp_name
+        # Load training history
+        history = load_history(exp_dir / f"{exp_name}_train_history.json")
+        config = history["config"]
+        batch_size = config["batch_size"]
+        # Load trained model
+        dropout = opts["dropout_prob"] if opts["dropout_prob"] is not None else config.get("reg_dropout", 0.0)
+        model = load_model(dropout_prob=dropout, weights_path=exp_dir / f"{exp_name}_model.pt")
+        print("Model loaded:", type(model).__name__)
+        # Evaluate on noisy test set
+        noisy_test_metrics, _ = evaluate_noisy_test(model,test_dataset,batch_size,exp_name,config, exp_dir)
+        # noise robustness curve
+        noise_results = evaluate_noise_robustness(model, test_dataset, batch_size, exp_dir / "noise_robustness.json")
+        # Generate MixUp demo figure
+        save_mixup_demo(mixup_data,test_dataset, exp_dir / "robustness_demo.png",alpha=config.get("mixup_alpha", 0.4),
+                        device=device)
+        # Print analysis summary
+        print_analysis(history, noisy_test_metrics, noise_results, exp_name)
+        metrics = history["metrics"]["epoch_metrics"]
+        val_acc = [m["validation_accuracy"] for m in metrics]
+        summary[exp_name] = {
+            "config": config,
+            "final_val_accuracy": val_acc[-1],
+            "peak_val_accuracy": max(val_acc),
+            "noisy_test_metrics": noisy_test_metrics,
+            "noise_robustness_curve": noise_results
+        }
     save_json(summary, TASK_DIR / "task2_summary.json")
-
+    tech_analysis()
 
 if __name__ == "__main__":
     main()
