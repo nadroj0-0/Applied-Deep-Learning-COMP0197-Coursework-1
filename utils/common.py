@@ -1,134 +1,19 @@
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 from pathlib import Path
 import time
 import json
-import random
-import numpy as np
 from .network import CNN
 from .early_stopping import EarlyStopping
-
-
+from .data import *
+from .training_strategies import *
 
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-
-
-class Cutout:
-    """
-    Randomly masks a square patch of an image tensor during training.
-    Forces the network to learn distributed representations rather than
-    relying on a single discriminative region.
-    Args:
-        size (int): Side length of the square patch to zero out.
-    """
-    def __init__(self, size=16):
-        self.size = size
-    def __call__(self, img):
-        h, w = img.shape[1], img.shape[2]
-        cx = torch.randint(0, w, (1,)).item()
-        cy = torch.randint(0, h, (1,)).item()
-        x1 = max(0, cx - self.size // 2)
-        x2 = min(w, cx + self.size // 2)
-        y1 = max(0, cy - self.size // 2)
-        y2 = min(h, cy + self.size // 2)
-        img = img.clone()
-        img[:, y1:y2, x1:x2] = 0.0
-        return img
-
-
-def set_seed(seed=None):
-    """
-    Set random seeds for reproducibility across Python, NumPy, and PyTorch.
-    Also configures deterministic CUDA behaviour.
-    """
-    if seed is None:
-        seed = 42
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    generator = torch.Generator().manual_seed(seed)
-    print(f"Random seed set to {seed}")
-    return generator, seed
-
-def init_seed(cfg):
-    """
-    Resolve seed from config, initialise RNGs, and record the final seed.
-    Returns the dataloader generator.
-    """
-    seed = cfg.get("seed")
-    generator, seed = set_seed(seed)
-    cfg["seed"] = seed
-    return generator
-
-def download_data(augment=False):
-    # Download the data
-    print('Downloading CIFAR-10 dataset...')
-    if augment:
-        train_transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, padding=4),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            Cutout(size=16)
-        ])
-    else:
-        train_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-    test_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
-    train_dataset = datasets.CIFAR10(root=DATA_DIR, train=True, download=True, transform=train_transform)
-    test_dataset = datasets.CIFAR10(root=DATA_DIR, train=False, download=True, transform=test_transform)
-    print('Dataset downloaded successfully.')
-    return (train_dataset, test_dataset)
-
-
-def load_data_pytorch(train_dataset, batch_size, validation_fraction, generator):
-    # Load the data into PyTorch
-    print('Loading dataset into PyTorch...')
-    total_size = len(train_dataset)
-    val_size = int(validation_fraction * total_size)
-    train_size = total_size - val_size
-    train_subset, val_subset = random_split(train_dataset,[train_size, val_size],generator=generator)
-    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, generator=generator)
-    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
-    images, labels = next(iter(train_loader))
-    return images, labels, train_loader, val_loader
-
-
-def inspect_data(images, labels, train_dataset):
-    # Inspect a few samples of the data
-    print('Batch images shape:', images.shape)
-    print('Batch labels shape:', labels.shape)
-    image = images[0]  # Sample 1 image
-    label = labels[0]  # Sample 1 label
-    print('First image tensor shape:', image.shape)
-    print('First label:', label)
-    print('Min pixel value:', image.min().item())
-    print('Max pixel value:', image.max().item())
-    # Inspect the different labels
-    classes = train_dataset.classes
-    print('Classes:', classes)
-    return classes
 
 
 def init_model(images, dropout_prob=0.0):
@@ -182,90 +67,7 @@ def init_optimiser(model, method, **kwargs):
 # Training step strategies
 # ================================
 
-def baseline_step(model, inputs, labels, criterion, **kwargs):
-    """
-    Standard training step.
-    """
-    outputs = model(inputs)
-    loss = criterion(outputs, labels)
-    return loss, outputs
 
-def mixup_data(inputs, labels, alpha):
-    """
-    Apply MixUp augmentation.
-    inputs : tensor (B,C,H,W)
-    labels : tensor (B)
-    alpha  : Beta distr param
-    """
-    if alpha > 0:
-        lam = torch.distributions.Beta(alpha, alpha).sample().item()
-    else:
-        lam = 1.0
-    batch_size = inputs.size(0)
-    # random permutation of batch
-    index = torch.randperm(batch_size).to(device)
-    mixed_inputs = lam * inputs + (1 - lam) * inputs[index]
-    labels_a = labels
-    labels_b = labels[index]
-    return mixed_inputs, labels_a, labels_b, lam
-
-def mixup_step(model, inputs, labels, criterion, **kwargs):
-    """
-    MixUp training step.
-    """
-    mixup_alpha = kwargs["mixup_alpha"]
-    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, mixup_alpha)
-    outputs = model(mixed_inputs)
-    loss = lam * criterion(outputs, y_a) + (1 - lam) * criterion(outputs, y_b)
-    return loss, outputs
-
-
-def label_smoothing_loss(outputs, targets, smoothing):
-    """
-    Custom label-smoothed cross entropy.
-    outputs  : model logits (batch_size, num_classes)
-    targets  : integer class labels (batch_size)
-    smoothing: epsilon value
-    """
-    num_classes = outputs.size(1)
-    # convert logits → log probabilities
-    log_probs = F.log_softmax(outputs, dim=1)
-    # create smoothed target distribution
-    with torch.no_grad():
-        true_dist = torch.zeros_like(log_probs)
-        true_dist.fill_(smoothing / (num_classes - 1))
-        true_dist.scatter_(1, targets.unsqueeze(1), 1 - smoothing)
-    loss = (-true_dist * log_probs).sum(dim=1).mean()
-    return loss
-
-
-def smoothing_step(model, inputs, labels, criterion, **kwargs):
-    """
-    Label smoothing training step.
-    """
-    label_smoothing = kwargs["label_smoothing"]
-    outputs = model(inputs)
-    loss = label_smoothing_loss(outputs, labels, label_smoothing)
-    return loss, outputs
-
-
-def mixup_smoothing_step(model, inputs, labels, criterion, **kwargs):
-    """
-    MixUp + label smoothing.
-    """
-    mixup_alpha = kwargs["mixup_alpha"]
-    label_smoothing = kwargs["label_smoothing"]
-    mixed_inputs, y_a, y_b, lam = mixup_data(inputs, labels, mixup_alpha)
-    outputs = model(mixed_inputs)
-    loss_a = label_smoothing_loss(outputs, y_a, label_smoothing)
-    loss_b = label_smoothing_loss(outputs, y_b, label_smoothing)
-    loss = lam * loss_a + (1 - lam) * loss_b
-    return loss, outputs
-
-baseline_step.valid_train_accuracy = True
-smoothing_step.valid_train_accuracy = True
-mixup_step.valid_train_accuracy = False
-mixup_smoothing_step.valid_train_accuracy = False
 
 def evaluate_model(data_loader, model, criterion):
     model.eval()
@@ -534,54 +336,10 @@ def evaluate_test_set(model, test_loader):
     return {"test_loss": test_loss, "test_accuracy": test_acc}
 
 
-def run_test_evaluation(model, test_dataset, batch_size, name, model_dir,config=None):
-    """
-    Complete test evaluation pipeline.
-    Builds test loader → evaluates model → attaches metrics → saves history.
-    Args:
-        model (torch.nn.Module)
-        test_dataset
-        batch_size (int)
-        history (dict)
-        experiment_name (str)
-        model_dir (Path)
-        config (dict)
-    Returns:
-        dict: test metrics
-    """
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    test_metrics = evaluate_test_set(model, test_loader)
-    history_path = save_history(test_metrics, name, "test", model, model_dir, config=config)
-    return test_metrics, history_path
-
-def evaluate_confidence(model, data_loader):
-    """
-    Compute mean max softmax confidence across a dataset.
-    A well-calibrated model produces lower confidence than an overfit one.
-
-    Args:
-        model       (torch.nn.Module): Trained model in eval mode.
-        data_loader (DataLoader):      Dataset to evaluate over.
-
-    Returns:
-        float: Mean of the maximum softmax probability across all samples.
-    """
-    model.eval()
-    total_confidence = 0.0
-    total_samples    = 0
-    with torch.no_grad():
-        for inputs, _ in data_loader:
-            inputs   = inputs.to(device)
-            logits   = model(inputs)
-            probs    = torch.softmax(logits, dim=1)
-            max_prob = probs.max(dim=1).values
-            total_confidence += max_prob.sum().item()
-            total_samples    += inputs.size(0)
-    return total_confidence / total_samples
-
 def save_json(data, path):
     """
     Save dictionary as formatted JSON.
     """
     with open(path, "w") as f:
         json.dump(data, f, indent=4)
+

@@ -12,7 +12,7 @@ from utils.robustness import build_noisy_test_loader, save_mixup_demo, evaluate_
 
 
 TASK_DIR = Path(__file__).resolve().parent
-MODEL_DIR = TASK_DIR / "models"
+MODEL_DIR = TASK_DIR / "models" / "baseline_fixed_mixup_ls"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -105,16 +105,16 @@ def evaluate_noisy_test(model, test_dataset, batch_size, name, config):
 
 def main():
     # Load training history
-    history = load_history(MODEL_DIR / "baseline_mixup_smooth_train_history.json")
+    history = load_history(MODEL_DIR / "baseline_fixed_mixup_ls_train_history.json")
     config = history["config"]
     batch_size = config["batch_size"]
     # Load trained model
-    model = load_model(dropout_prob=config.get("dropout_prob", 0.0), weights_path=MODEL_DIR / "baseline_mixup_smooth_model.pt")
+    model = load_model(dropout_prob=config.get("dropout_prob", 0.0), weights_path=MODEL_DIR / "baseline_fixed_mixup_ls_model.pt")
     print("Model loaded:", type(model).__name__)
     # Load CIFAR10
     _, test_dataset = download_data()
     # Evaluate on noisy test set
-    noisy_test_metrics, _ = evaluate_noisy_test(model,test_dataset,batch_size,"baseline_mixup_smooth",config)
+    noisy_test_metrics, _ = evaluate_noisy_test(model,test_dataset,batch_size,"baseline_fixed_mixup_ls",config)
     # noise robustness curve
     noise_results = evaluate_noise_robustness(model, test_dataset, batch_size, TASK_DIR / "noise_robustness.json")
     # Generate MixUp demo figure

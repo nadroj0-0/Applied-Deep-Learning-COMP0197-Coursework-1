@@ -133,7 +133,7 @@ def staged_search(search_space,images,labels,train_loader,val_loader,method, mod
         "best_validation_accuracy": best_metrics["validation_accuracy"],
         "runs": list(run_records.values())
     }
-    model_dir.mkdir(exist_ok=True)
+    model_dir.mkdir(parents=True, exist_ok=True)
     summary_path = model_dir / f"{search_name}.json"
     save_json(search_summary, summary_path)
     print(f"\nHyperparameter search summary saved to: {summary_path}")

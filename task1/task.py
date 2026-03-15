@@ -8,9 +8,12 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 import torch
 from utils.plotting import generate_gap_plot, generate_gap_per_epoch_plot
 from utils.common import *
+from utils.experiment import *
 
 
 TASK_DIR   = Path(__file__).resolve().parent
+BASE_DIR = TASK_DIR / "models" / "baseline"
+REG_DIR = TASK_DIR / "models" / "regularised"
 MODEL_DIR  = TASK_DIR / "models"
 device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -88,15 +91,15 @@ def print_analysis(b_epochs, b_train_acc, b_val_acc, r_epochs, r_train_acc, r_va
 
 def main():
     # load histories
-    b_history = load_history(MODEL_DIR / "baseline_train_history.json")
-    r_history = load_history(MODEL_DIR / "regularised_train_history.json")
+    b_history = load_history(BASE_DIR / "baseline_train_history.json")
+    r_history = load_history(REG_DIR / "regularised_train_history.json")
 
     b_epochs, b_train_acc, b_val_acc = extract_epoch_metrics(b_history)
     r_epochs, r_train_acc, r_val_acc = extract_epoch_metrics(r_history)
 
     # load models
-    baseline_model    = load_model(dropout_prob=0.0, weights_path=MODEL_DIR / "baseline_model.pt")
-    regularised_model = load_model(dropout_prob=0.5, weights_path=MODEL_DIR / "regularised_model.pt")
+    baseline_model    = load_model(dropout_prob=0.0, weights_path=BASE_DIR / "baseline_model.pt")
+    regularised_model = load_model(dropout_prob=0.5, weights_path=REG_DIR / "regularised_model.pt")
     print("Baseline model loaded:    ", type(baseline_model).__name__)
     print("Regularised model loaded: ", type(regularised_model).__name__)
 
@@ -105,11 +108,11 @@ def main():
     base_batch_size = b_history["config"]["batch_size"]
     base_test_metrics, base_history_path = run_test_evaluation(
         baseline_model, test_dataset, base_batch_size,
-        'baseline', MODEL_DIR, config=b_history['config'])
+        'baseline', BASE_DIR, config=b_history['config'])
     reg_batch_size = r_history["config"]["batch_size"]
     reg_test_metrics, reg_history_path = run_test_evaluation(
         regularised_model, test_dataset, reg_batch_size,
-        "regularised", MODEL_DIR, config=r_history["config"])
+        "regularised", REG_DIR, config=r_history["config"])
 
     # confidence calibration comparison
     from torch.utils.data import DataLoader
