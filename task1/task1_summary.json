@@ -1,32 +1,32 @@
 {
     "baseline": {
         "final_train_accuracy": 1.0,
-        "final_val_accuracy": 0.8847,
-        "generalisation_gap": 0.11529999999999996,
-        "peak_val_accuracy": 0.8847,
-        "peak_val_epoch": 50,
+        "final_val_accuracy": 0.8885,
+        "generalisation_gap": 0.11150000000000004,
+        "peak_val_accuracy": 0.8891,
+        "peak_val_epoch": 77,
         "test_metrics": {
-            "test_loss": 0.6897534636974335,
-            "test_accuracy": 0.8793
+            "test_loss": 0.7275836091041565,
+            "test_accuracy": 0.8785
         },
-        "mean_confidence": 0.966844645023346
+        "mean_confidence": 0.966925526714325
     },
     "regularised": {
-        "final_train_accuracy": 0.928925,
-        "final_val_accuracy": 0.9193,
-        "generalisation_gap": 0.009624999999999995,
-        "peak_val_accuracy": 0.9193,
-        "peak_val_epoch": 50,
+        "final_train_accuracy": 0.955775,
+        "final_val_accuracy": 0.9259,
+        "generalisation_gap": 0.029875000000000096,
+        "peak_val_accuracy": 0.9305,
+        "peak_val_epoch": 72,
         "test_metrics": {
-            "test_loss": 0.30077253618240357,
-            "test_accuracy": 0.91
+            "test_loss": 0.3321009395837784,
+            "test_accuracy": 0.913
         },
-        "mean_confidence": 0.9491415154457092
+        "mean_confidence": 0.9620590957641602
     },
     "comparison": {
-        "gap_reduction": 0.10567499999999996,
-        "validation_accuracy_improvement": 0.034599999999999964,
-        "confidence_reduction": 0.017703129577636756,
-        "test_accuracy_gain": 0.03070000000000006
+        "gap_reduction": 0.08162499999999995,
+        "validation_accuracy_improvement": 0.04139999999999999,
+        "confidence_reduction": 0.004866430950164813,
+        "test_accuracy_gain": 0.034500000000000086
     }
 }

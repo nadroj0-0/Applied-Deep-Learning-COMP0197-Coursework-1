@@ -2,31 +2,31 @@
     "baseline_fixed_mixup_ls": {
         "config": {
             "seed": 42,
-            "epochs": 50,
+            "epochs": 80,
             "optimiser": "SGD",
-            "lr": 0.02680966393455427,
-            "momentum": 0.8012347643388317,
-            "weight_decay": 1.897743576692889e-06,
-            "reg_dropout": 0.1580298261000784,
+            "lr": 0.01619621907336969,
+            "momentum": 0.9285729026103532,
+            "weight_decay": 1.201179492735599e-06,
+            "reg_dropout": 0.2193025904119891,
             "batch_size": 64,
             "validation_fraction": 0.2,
-            "mixup_alpha": 0.16492209036610356,
-            "label_smoothing": 0.028376111598358164,
+            "mixup_alpha": 0.11857517877870455,
+            "label_smoothing": 0.047779153630463214,
             "early_stopping_patience": 5,
             "early_stopping_min_delta": 0.0001
         },
-        "final_val_accuracy": 0.8612,
-        "peak_val_accuracy": 0.8708,
+        "final_val_accuracy": 0.8882,
+        "peak_val_accuracy": 0.8895,
         "noisy_test_metrics": {
-            "test_loss": 0.8869948795318604,
-            "test_accuracy": 0.7153
+            "test_loss": 1.038645000076294,
+            "test_accuracy": 0.6564
         },
         "noise_robustness_curve": {
-            "0.0": 0.8569,
-            "0.05": 0.8324,
-            "0.1": 0.7087,
-            "0.2": 0.4093,
-            "0.3": 0.2379
+            "0.0": 0.8777,
+            "0.05": 0.8334,
+            "0.1": 0.66,
+            "0.2": 0.309,
+            "0.3": 0.1847
         }
     },
     "baseline_free_mixup_ls": {
@@ -48,26 +48,26 @@
         "final_val_accuracy": 0.8802,
         "peak_val_accuracy": 0.8826,
         "noisy_test_metrics": {
-            "test_loss": 1.1316135274887085,
-            "test_accuracy": 0.6382
+            "test_loss": 1.1306453620910644,
+            "test_accuracy": 0.638
         },
         "noise_robustness_curve": {
             "0.0": 0.871,
-            "0.05": 0.8219,
-            "0.1": 0.6368,
-            "0.2": 0.2947,
-            "0.3": 0.1848
+            "0.05": 0.8145,
+            "0.1": 0.6412,
+            "0.2": 0.2936,
+            "0.3": 0.1882
         }
     },
     "regularised_fixed_mixup_ls": {
         "config": {
             "seed": 42,
-            "epochs": 50,
+            "epochs": 80,
             "optimiser": "SGD",
-            "lr": 0.02680966393455427,
-            "momentum": 0.8012347643388317,
-            "weight_decay": 1.897743576692889e-06,
-            "reg_dropout": 0.1580298261000784,
+            "lr": 0.01619621907336969,
+            "momentum": 0.9285729026103532,
+            "weight_decay": 1.201179492735599e-06,
+            "reg_dropout": 0.2193025904119891,
             "batch_size": 64,
             "validation_fraction": 0.2,
             "mixup_alpha": 0.11857517877870455,
@@ -75,18 +75,18 @@
             "early_stopping_patience": 5,
             "early_stopping_min_delta": 0.0001
         },
-        "final_val_accuracy": 0.8984,
-        "peak_val_accuracy": 0.8985,
+        "final_val_accuracy": 0.9137,
+        "peak_val_accuracy": 0.9137,
         "noisy_test_metrics": {
-            "test_loss": 1.0921314222335816,
-            "test_accuracy": 0.6463
+            "test_loss": 0.9121879590988159,
+            "test_accuracy": 0.7076
         },
         "noise_robustness_curve": {
-            "0.0": 0.891,
-            "0.05": 0.8289,
-            "0.1": 0.6512,
-            "0.2": 0.3845,
-            "0.3": 0.2859
+            "0.0": 0.9078,
+            "0.05": 0.858,
+            "0.1": 0.7105,
+            "0.2": 0.4548,
+            "0.3": 0.3037
         }
     },
     "regularised_free_mixup_ls": {
@@ -108,15 +108,15 @@
         "final_val_accuracy": 0.8829,
         "peak_val_accuracy": 0.8839,
         "noisy_test_metrics": {
-            "test_loss": 1.2616683246612548,
-            "test_accuracy": 0.5896
+            "test_loss": 1.2576941663742065,
+            "test_accuracy": 0.5928
         },
         "noise_robustness_curve": {
             "0.0": 0.8698,
-            "0.05": 0.7926,
-            "0.1": 0.5928,
-            "0.2": 0.3129,
-            "0.3": 0.2166
+            "0.05": 0.7928,
+            "0.1": 0.5929,
+            "0.2": 0.3154,
+            "0.3": 0.2181
         }
     }
 }
