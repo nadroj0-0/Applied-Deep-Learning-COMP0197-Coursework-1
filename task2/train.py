@@ -16,14 +16,13 @@ TRAIN_CONFIG = {
     "reg_dropout": 0.2193025904119891,
     "batch_size": 64,
     "validation_fraction": 0.2,
-    "mixup_alpha": 0.16492209036610356,
-    "label_smoothing": 0.028376111598358164,
+    "mixup_alpha": 0.11857517877870455,
+    "label_smoothing": 0.047779153630463214,
     "early_stopping_patience": 5,
     "early_stopping_min_delta": 0.0001
 }
 
-
-SEARCH = True
+SEARCH = False
 BASELINE_FIXED_SEARCH_SPACE = {
     "mixup_alpha": (0.1, 0.8, "uniform"),
     "label_smoothing": (0.01, 0.2, "uniform"),
