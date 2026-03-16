@@ -8,17 +8,17 @@ TASK_DIR = Path(__file__).resolve().parent
 
 TRAIN_CONFIG = {
     'seed': 42,
-    "epochs": 50,
+    "epochs": 80,
     "optimiser": "SGD",
-    "lr": 0.02680966393455427,
-    "momentum": 0.8012347643388317,
-    "weight_decay": 1.897743576692889e-06,
-    "reg_dropout": 0.1580298261000784,
+    "lr": 0.01619621907336969,
+    "momentum": 0.9285729026103532,
+    "weight_decay": 1.201179492735599e-06,
+    "reg_dropout": 0.2193025904119891,
     "batch_size": 64,
     "validation_fraction": 0.2
 }
 
-SEARCH = True
+SEARCH = False
 
 BASE_SEARCH_SPACE = {
     "lr": (1e-4, 1e-1, "log"),
@@ -46,7 +46,7 @@ HYPER_PARAM_SEARCH_SCHEDULE = [
 
 def main():
     try:
-        cfg = TRAIN_CONFIG
+        cfg = TRAIN_CONFIG.copy()
     except NameError:
         raise RuntimeError(
             "TRAIN_CONFIG must be defined before calling main(). "
@@ -72,15 +72,15 @@ def main():
     )
 
     # --- Full regularised (free search, commented out for submission) ---
-    if SEARCH:
-        full_reg = Experiment("full_regularised", cfg)
-        full_reg.run(
-            search_space=FULL_REG_SEARCH_SPACE,
-            augment=True,
-            use_regularisation=True,
-            schedule=HYPER_PARAM_SEARCH_SCHEDULE,
-            initial_models=HYPER_PARAM_INIT_MODELS
-        )
+    # if SEARCH:
+    #     full_reg = Experiment("full_regularised", cfg, model_dir=get_model_dir("full_regularised", TASK_DIR))
+    #     full_reg.run(
+    #         search_space=FULL_REG_SEARCH_SPACE,
+    #         augment=True,
+    #         use_regularisation=True,
+    #         schedule=HYPER_PARAM_SEARCH_SCHEDULE,
+    #         initial_models=HYPER_PARAM_INIT_MODELS
+    #     )
 
 
 

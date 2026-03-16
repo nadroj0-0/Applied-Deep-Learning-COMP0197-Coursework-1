@@ -1,0 +1,32 @@
+{
+    "baseline": {
+        "final_train_accuracy": 1.0,
+        "final_val_accuracy": 0.8847,
+        "generalisation_gap": 0.11529999999999996,
+        "peak_val_accuracy": 0.8847,
+        "peak_val_epoch": 50,
+        "test_metrics": {
+            "test_loss": 0.6897534636974335,
+            "test_accuracy": 0.8793
+        },
+        "mean_confidence": 0.966844645023346
+    },
+    "regularised": {
+        "final_train_accuracy": 0.928925,
+        "final_val_accuracy": 0.9193,
+        "generalisation_gap": 0.009624999999999995,
+        "peak_val_accuracy": 0.9193,
+        "peak_val_epoch": 50,
+        "test_metrics": {
+            "test_loss": 0.30077253618240357,
+            "test_accuracy": 0.91
+        },
+        "mean_confidence": 0.9491415154457092
+    },
+    "comparison": {
+        "gap_reduction": 0.10567499999999996,
+        "validation_accuracy_improvement": 0.034599999999999964,
+        "confidence_reduction": 0.017703129577636756,
+        "test_accuracy_gain": 0.03070000000000006
+    }
+}

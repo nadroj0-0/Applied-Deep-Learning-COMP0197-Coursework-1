@@ -1,0 +1,122 @@
+{
+    "baseline_fixed_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.02680966393455427,
+            "momentum": 0.8012347643388317,
+            "weight_decay": 1.897743576692889e-06,
+            "reg_dropout": 0.1580298261000784,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.16492209036610356,
+            "label_smoothing": 0.028376111598358164,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8612,
+        "peak_val_accuracy": 0.8708,
+        "noisy_test_metrics": {
+            "test_loss": 0.8869948795318604,
+            "test_accuracy": 0.7153
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.8569,
+            "0.05": 0.8324,
+            "0.1": 0.7087,
+            "0.2": 0.4093,
+            "0.3": 0.2379
+        }
+    },
+    "baseline_free_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.033771920679462025,
+            "momentum": 0.9474399831937865,
+            "weight_decay": 1.897743576692889e-06,
+            "reg_dropout": 0.1580298261000784,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.2603336503748731,
+            "label_smoothing": 0.016099046341767176,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8802,
+        "peak_val_accuracy": 0.8826,
+        "noisy_test_metrics": {
+            "test_loss": 1.1316135274887085,
+            "test_accuracy": 0.6382
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.871,
+            "0.05": 0.8219,
+            "0.1": 0.6368,
+            "0.2": 0.2947,
+            "0.3": 0.1848
+        }
+    },
+    "regularised_fixed_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.02680966393455427,
+            "momentum": 0.8012347643388317,
+            "weight_decay": 1.897743576692889e-06,
+            "reg_dropout": 0.1580298261000784,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.11857517877870455,
+            "label_smoothing": 0.047779153630463214,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8984,
+        "peak_val_accuracy": 0.8985,
+        "noisy_test_metrics": {
+            "test_loss": 1.0921314222335816,
+            "test_accuracy": 0.6463
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.891,
+            "0.05": 0.8289,
+            "0.1": 0.6512,
+            "0.2": 0.3845,
+            "0.3": 0.2859
+        }
+    },
+    "regularised_free_mixup_ls": {
+        "config": {
+            "seed": 42,
+            "epochs": 50,
+            "optimiser": "SGD",
+            "lr": 0.011095097092787354,
+            "momentum": 0.9020243627776711,
+            "weight_decay": 6.316486464842283e-06,
+            "reg_dropout": 0.48457707914788484,
+            "batch_size": 64,
+            "validation_fraction": 0.2,
+            "mixup_alpha": 0.17808652151711352,
+            "label_smoothing": 0.09260539762712994,
+            "early_stopping_patience": 5,
+            "early_stopping_min_delta": 0.0001
+        },
+        "final_val_accuracy": 0.8829,
+        "peak_val_accuracy": 0.8839,
+        "noisy_test_metrics": {
+            "test_loss": 1.2616683246612548,
+            "test_accuracy": 0.5896
+        },
+        "noise_robustness_curve": {
+            "0.0": 0.8698,
+            "0.05": 0.7926,
+            "0.1": 0.5928,
+            "0.2": 0.3129,
+            "0.3": 0.2166
+        }
+    }
+}

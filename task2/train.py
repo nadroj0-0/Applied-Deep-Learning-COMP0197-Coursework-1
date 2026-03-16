@@ -8,19 +8,21 @@ TASK_DIR = Path(__file__).resolve().parent
 
 TRAIN_CONFIG = {
     "seed": 42,
-    "epochs": 50,
+    "epochs": 80,
     "optimiser": "SGD",
-    "lr": 0.02680966393455427,
-    "momentum": 0.8012347643388317,
-    "weight_decay": 1.897743576692889e-06,
-    "reg_dropout": 0.1580298261000784,
+    "lr": 0.01619621907336969,
+    "momentum": 0.9285729026103532,
+    "weight_decay": 1.201179492735599e-06,
+    "reg_dropout": 0.2193025904119891,
     "batch_size": 64,
     "validation_fraction": 0.2,
-    "mixup_alpha": 0.4,
-    "label_smoothing": 0.05,
+    "mixup_alpha": 0.16492209036610356,
+    "label_smoothing": 0.028376111598358164,
     "early_stopping_patience": 5,
-    "early_stopping_min_delta": 1e-4
+    "early_stopping_min_delta": 0.0001
 }
+
+
 SEARCH = True
 BASELINE_FIXED_SEARCH_SPACE = {
     "mixup_alpha": (0.1, 0.8, "uniform"),
@@ -58,7 +60,7 @@ HYPER_PARAM_SEARCH_SCHEDULE = [
 
 def main():
     try:
-        cfg = TRAIN_CONFIG
+        cfg = TRAIN_CONFIG.copy()
     except NameError:
         raise RuntimeError(
             "TRAIN_CONFIG must be defined before calling main(). "
@@ -80,20 +82,20 @@ def main():
             use_mixup=True,
             use_smoothing=True,
         ),
-        "baseline_free_mixup_ls": dict(
-            search_space=BASELINE_FREE_SEARCH_SPACE if SEARCH else None,
-            training_step=mixup_smoothing_step,
-            use_mixup=True,
-            use_smoothing=True,
-        ),
-        "regularised_free_mixup_ls": dict(
-            search_space=REG_FREE_SEARCH_SPACE if SEARCH else None,
-            training_step=mixup_smoothing_step,
-            augment=True,
-            use_regularisation=True,
-            use_mixup=True,
-            use_smoothing=True,
-        ),
+        # "baseline_free_mixup_ls": dict(
+        #     search_space=BASELINE_FREE_SEARCH_SPACE if SEARCH else None,
+        #     training_step=mixup_smoothing_step,
+        #     use_mixup=True,
+        #     use_smoothing=True,
+        # ),
+        # "regularised_free_mixup_ls": dict(
+        #     search_space=REG_FREE_SEARCH_SPACE if SEARCH else None,
+        #     training_step=mixup_smoothing_step,
+        #     augment=True,
+        #     use_regularisation=True,
+        #     use_mixup=True,
+        #     use_smoothing=True,
+        # ),
     }
 
     for name, kwargs in experiments.items():
