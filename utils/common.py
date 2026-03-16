@@ -63,11 +63,6 @@ def init_optimiser(model, method, **kwargs):
     print('Optimiser created:', optim_method)
     return optim_method
 
-# ================================
-# Training step strategies
-# ================================
-
-
 
 def evaluate_model(data_loader, model, criterion):
     model.eval()
@@ -225,32 +220,6 @@ def save_history(history, name, stage, model, model_dir, config=None):
         json.dump(payload, f, indent=4)
     print(f'History saved to: {history_path}')
     return history_path
-
-def full_train_old(name, images, labels, train_loader, val_loader, method, epochs, model_dir,
-               config=None, dropout_prob=0.0, training_step=baseline_step, save_outputs=True,  **kwargs):
-    start_time = time.time()
-    model, outputs = init_model(images, dropout_prob)
-    criterion, loss = init_loss(outputs, labels)
-    #optim_method = init_optimiser(model, 'SGD', lr=0.001, momentum=0.9)
-    # separate optimiser kwargs from training-step kwargs
-    optimiser_keys = {"lr", "momentum", "weight_decay", "dampening", "nesterov"}
-    optimiser_kwargs = {k: v for k, v in kwargs.items() if k in optimiser_keys}
-    training_kwargs = {k: v for k, v in kwargs.items() if k not in optimiser_keys}
-    optim_method = init_optimiser(model, method, **optimiser_kwargs)
-    #batch_losses, epoch_losses = train_model(epochs, train_loader, model, criterion, optim_method)
-    history = train_model(epochs, train_loader, val_loader, model, criterion,
-                          optim_method, training_step=training_step,
-                          early_stopping_patience=config.get("early_stopping_patience") if config else None,
-                          early_stopping_min_delta=config.get("early_stopping_min_delta") if config else 0.0,
-                          **training_kwargs)
-    if save_outputs:
-        model_path = save_model(model, name, model_dir)
-        history_path = save_history(history, name, 'train', model, model_dir, config=config)
-    end_time = time.time()
-    elapsed = end_time - start_time
-    print(f"\n{name} training completed in {elapsed:.2f} seconds")
-    #return model, batch_losses, epoch_losses
-    return model, history, model_path, history_path
 
 def full_train(name, images, labels, train_loader, val_loader, method, epochs, model_dir,
                config=None, dropout_prob=0.0, training_step=baseline_step, save_outputs=True,

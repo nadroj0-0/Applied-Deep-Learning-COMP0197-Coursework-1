@@ -72,15 +72,15 @@ def main():
     )
 
     # --- Full regularised (free search, commented out for submission) ---
-    # if SEARCH:
-    #     full_reg = Experiment("full_regularised", cfg)
-    #     full_reg.run(
-    #         search_space=FULL_REG_SEARCH_SPACE,
-    #         augment=True,
-    #         use_regularisation=True,
-    #         schedule=HYPER_PARAM_SEARCH_SCHEDULE,
-    #         initial_models=HYPER_PARAM_INIT_MODELS
-    #     )
+    if SEARCH:
+        full_reg = Experiment("full_regularised", cfg)
+        full_reg.run(
+            search_space=FULL_REG_SEARCH_SPACE,
+            augment=True,
+            use_regularisation=True,
+            schedule=HYPER_PARAM_SEARCH_SCHEDULE,
+            initial_models=HYPER_PARAM_INIT_MODELS
+        )
 
 
 

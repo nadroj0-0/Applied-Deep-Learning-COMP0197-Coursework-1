@@ -4,9 +4,6 @@ from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 
 
-# ----------------------------
-# Plot config
-# ----------------------------
 WIDTH    = 2800
 HEIGHT   = 1600
 M_LEFT   = 110

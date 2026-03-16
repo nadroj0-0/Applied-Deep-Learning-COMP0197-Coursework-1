@@ -18,8 +18,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def print_analysis(history, noisy_test_metrics, noise_results, exp_name):
     """
-    Print quantitative summary statistics to support the written technical analysis
-    for Task 2.
+    Print quantitative summary statistics
 
     Args:
         history (dict): Training history loaded from JSON.
