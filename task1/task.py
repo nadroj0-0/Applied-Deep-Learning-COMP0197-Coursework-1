@@ -14,7 +14,6 @@ from utils.experiment import *
 TASK_DIR   = Path(__file__).resolve().parent
 BASE_DIR = TASK_DIR / "models" / "baseline"
 REG_DIR = TASK_DIR / "models" / "regularised"
-MODEL_DIR  = TASK_DIR / "models"
 device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -98,8 +97,10 @@ def main():
     r_epochs, r_train_acc, r_val_acc = extract_epoch_metrics(r_history)
 
     # load models
-    baseline_model    = load_model(dropout_prob=0.0, weights_path=BASE_DIR / "baseline_model.pt")
-    regularised_model = load_model(dropout_prob=0.5, weights_path=REG_DIR / "regularised_model.pt")
+    baseline_model    = load_model(dropout_prob=b_history["config"].get("reg_dropout", 0.0),
+                                   weights_path=BASE_DIR / "baseline_model.pt")
+    regularised_model = load_model(dropout_prob=r_history["config"].get("reg_dropout", 0.0),
+                                   weights_path=REG_DIR / "regularised_model.pt")
     print("Baseline model loaded:    ", type(baseline_model).__name__)
     print("Regularised model loaded: ", type(regularised_model).__name__)
 

@@ -12,7 +12,6 @@ from utils.robustness import build_noisy_test_loader, save_mixup_demo, evaluate_
 
 
 TASK_DIR = Path(__file__).resolve().parent
-MODEL_DIR = TASK_DIR / "models" / "baseline_fixed_mixup_ls"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -28,8 +27,6 @@ def print_analysis(history, noisy_test_metrics, noise_results, exp_name):
     metrics = history["metrics"]["epoch_metrics"]
     train_acc = [m.get("train_accuracy") for m in metrics]
     val_acc = [m["validation_accuracy"] for m in metrics]
-    train_loss = [m["train_loss"] for m in metrics]
-    val_loss = [m["validation_loss"] for m in metrics]
 
     best_val_acc = max(val_acc) if val_acc else None
     best_val_epoch = val_acc.index(best_val_acc) + 1 if val_acc else None
@@ -107,9 +104,9 @@ def evaluate_noisy_test(model, test_dataset, batch_size, name, config, exp_dir):
 def main():
     EXPERIMENTS = {
         "baseline_fixed_mixup_ls": {"dropout_prob": 0.0},
-        "baseline_free_mixup_ls": {"dropout_prob": 0.0},
+        #"baseline_free_mixup_ls": {"dropout_prob": 0.0},   # additional model, uncomment if you want to run
         "regularised_fixed_mixup_ls": {"dropout_prob": None},  # read from config
-        "regularised_free_mixup_ls": {"dropout_prob": None},
+        #"regularised_free_mixup_ls": {"dropout_prob": None},  # additional model, uncomment if you want to run
     }
     # Load CIFAR10
     _, test_dataset = download_data()
