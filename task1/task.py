@@ -20,7 +20,9 @@ device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def print_analysis(b_epochs, b_train_acc, b_val_acc, r_epochs, r_train_acc, r_val_acc, base_conf,
                    reg_conf, base_test_metrics, reg_test_metrics):
     """
-    Print quantitative summary statistics to support the written technical analysis.
+    Prints a detailed quantitative and qualitative analysis comparing
+    baseline and regularised models, including generalisation gap,
+    calibration, and test performance.
 
     Args:
         b_epochs    (list[int]):   Baseline epoch numbers.
@@ -78,17 +80,40 @@ def print_analysis(b_epochs, b_train_acc, b_val_acc, r_epochs, r_train_acc, r_va
 
     print("\n--- Technical Analysis ---")
     print("""
-[REPLACE THIS BLOCK WITH YOUR ~500 WORD ANALYSIS COVERING:]
-  1. The generalisation gap observed in each model
-  2. Why the baseline overfits (high capacity, no regularisation)
-  3. How SGD with momentum acts as implicit regularisation
-  4. How dropout + weight decay shift the bias-variance position
-  5. Justification of chosen hyperparameters
+Task 1: Generalisation Gap and Regularisation
+This experiment trained a relatively high capacity CNN on CIFAR-10 to investigate the bias variance trade off and generalisation gap. The model uses convolutional layers (3, 32, 64 channels) followed by residual blocks at 64, 128, and 256 channels with BatchNorm, SiLU, and Squeeze and Excitation attention. Spatial resolution is reduced via max pooling, and classification uses global average pooling with a linear output layer. Two regimes were compared, a baseline with minimal explicit regularisation and a regularised model using augmentation, dropout, and weight decay, with hyperparameters obtained via successive halving.
+
+The baseline model clearly overfits. Training accuracy reached 100% while validation accuracy plateaued at 88.9% ( generalisation gap 11.2%). Training loss approached zero (0.0000298), whereas validation loss reached a minimum of 0.4726 at epoch 8 and increased afterwards reaching 0.643 by epoch 80, indicating memorisation rather than generalisable feature learning. This demonstrates high variance, the model has eough capacity (millions of parameters relative to the 50k CIFAR-10 training samples) to fit every training sample exactly but this does not transfer to unseen data. High confidence predictions (96.7%) relative to test accuracy (87.9%) further indicate overconfidence and poor calibration, this is likely caused by the optimiser pushing logits toward extreme values to minimise the already very small training loss.
+
+Even though the baseline was overfitting it still achieves 87.9% test accuracy. This is because SGD with momentum acts as implicit regularisation. Each gradient update is estimated from a batch of 64 samples which is only 0.16% of the training set. This introduces gradient noise which is believed to bias optimisation toward flatter minimums on the loss surface. Flat minimums generalise better than sharp minimums because they are less precisely tuned to the specific training examples, this means that small changes between the train and test data do not cause large loss increases. Across 80 epochs the model does 31250 gradient updates, and so SGDs radnomness accumulates and we observe a meaningful implicit regularisation effect even with no explicit regularisers. The momentum value of 0.929 selected by the hyperparameter search is relatively high, this smooths updates across past gradients reducing sensitivity to individual noisy batches and supporting stable convergence.
+SGD's implicit regularisation alone was not enough to close the gap. The regularised model added three regularisation techniques ontop of the baseline. These were random horizontal flip, random crop, and cutout augmentation applied to training data only, dropout at 21.9% on the FC classifier layer, and weight decay at 1.2e-6. These methods reduce variance by limiting the model’s reliance on specific training examples. Augmentation exposes the model to input variations, dropout prevents coadaptation by forcing redundant representations, and weight decay discourages overly large highly specific parameter values leading to more robust solutions.  The hyperparameter search suggested that a dropout value of 0.219 balanced bias and variance effectively for this architecture,  higher values tended to causes over regularisation given that BatchNorm, SE attention, and augmentation are already providing implicit regularisation.
+The regularised model substantially reduced the generalisation gap (3.0% vs 11.2%), achieving 92.6% validation accuracy and 91.3% test accuracy, with test loss decreasing from 0.728 to 0.332. Validation loss improved until epoch 57 unlike the baseline which diverged early demonstrating the model carried on learning throughout training. Overall, regularisation reduced variance with only a small increase in bias evidenced by a 4.4% drop in training accuracy.
+
+I initially applied Cutout before normalisation but corrected this following GenAI feedback by applying it after normalisation to ensure consistent feature removal.
     """)
     print("=" * 60)
 
 
 def main():
+    """
+        Runs Task 1 evaluation pipeline.
+
+        This function:
+        - Loads training histories for baseline and regularised models
+        - Extracts training and validation metrics
+        - Loads trained model weights
+        - Evaluates both models on the test set
+        - Computes confidence calibration metrics
+        - Generates generalisation gap plots
+        - Saves a summary of results to JSON
+        - Prints a detailed technical analysis
+
+        Outputs:
+            - generalisation_gap.png
+            - gap_per_epoch.png
+            - task1_summary.json
+            - Printed analysis to terminal
+    """
     # load histories
     b_history = load_history(BASE_DIR / "baseline_train_history.json")
     r_history = load_history(REG_DIR / "regularised_train_history.json")

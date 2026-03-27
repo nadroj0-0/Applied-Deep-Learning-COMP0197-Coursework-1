@@ -33,8 +33,13 @@ class Cutout:
 
 def set_seed(seed=None):
     """
-    Set random seeds for reproducibility across Python, NumPy, and PyTorch.
-    Also configures deterministic CUDA behaviour.
+    Sets random seeds for Python, NumPy, and PyTorch to ensure reproducibility.
+
+    Args:
+        seed (int, optional): Seed value. Defaults to 42 if None.
+
+    Returns:
+        tuple: (generator, seed) where generator is a torch.Generator object.
     """
     if seed is None:
         seed = 42
@@ -52,8 +57,13 @@ def set_seed(seed=None):
 
 def init_seed(cfg):
     """
-    Resolve seed from config, initialise RNGs, and record the final seed.
-    Returns the dataloader generator.
+    Initializes the random seed from a configuration dictionary.
+
+    Args:
+        cfg (dict): Configuration dictionary containing a 'seed' key.
+
+    Returns:
+        torch.Generator: Generator for reproducible data loading.
     """
     seed = cfg.get("seed")
     generator, seed = set_seed(seed)
@@ -62,6 +72,16 @@ def init_seed(cfg):
 
 
 def download_data(augment=False):
+    """
+        Downloads the CIFAR-10 dataset and applies appropriate transformations.
+
+        Args:
+            augment (bool): If True, applies data augmentation (random crop, flip, Cutout)
+                            to the training data. If False, uses only normalisation.
+
+        Returns:
+            tuple: (train_dataset, test_dataset) with applied transforms.
+        """
     # Download the data
     print('Downloading CIFAR-10 dataset...')
     if augment:
@@ -88,6 +108,19 @@ def download_data(augment=False):
 
 
 def load_data_pytorch(train_dataset, batch_size, validation_fraction, generator):
+    """
+        Splits the dataset into training and validation sets and creates DataLoaders.
+
+        Args:
+            train_dataset (Dataset): Full training dataset.
+            batch_size (int): Number of samples per batch.
+            validation_fraction (float): Fraction of data used for validation.
+            generator (torch.Generator): Random generator for reproducibility.
+
+        Returns:
+            tuple: (images, labels, train_loader, val_loader) where images and labels
+                   are a sample batch for inspection.
+    """
     # Load the data into PyTorch
     print('Loading dataset into PyTorch...')
     total_size = len(train_dataset)
@@ -101,6 +134,17 @@ def load_data_pytorch(train_dataset, batch_size, validation_fraction, generator)
 
 
 def inspect_data(images, labels, train_dataset):
+    """
+        Prints basic information about a batch of data and dataset properties.
+
+        Args:
+            images (Tensor): Batch of input images.
+            labels (Tensor): Corresponding labels.
+            train_dataset (Dataset): Dataset object to extract class names.
+
+        Returns:
+            list: Class names in the dataset.
+     """
     # Inspect a few samples of the data
     print('Batch images shape:', images.shape)
     print('Batch labels shape:', labels.shape)

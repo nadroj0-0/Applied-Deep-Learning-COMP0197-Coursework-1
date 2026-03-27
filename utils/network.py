@@ -1,6 +1,17 @@
+"""
+GenAI was used to assist with structuring and refining the model architecture.
+All architectural choices, implementation details, and design decisions were verified and adapted independently.
+"""
 import torch.nn as nn
 
 class SEBlock(nn.Module):
+    """
+        Squeeze-and-Excitation block for channel-wise attention.
+
+        Applies global average pooling followed by a small fully connected
+        network to generate channel-wise weights, which are used to rescale
+        the input feature maps.
+    """
     def __init__(self, channels, reduction):
         super().__init__()
         self.pool = nn.AdaptiveAvgPool2d(1)
@@ -19,6 +30,13 @@ class SEBlock(nn.Module):
 
 
 class ResidualBlock(nn.Module):
+    """
+        Residual block with two convolutional layers and SE attention.
+
+        Implements a skip connection to preserve input information while
+        allowing the network to learn residual features, improving training
+        stability and representation quality.
+    """
     def __init__(self, channels, reduction):
         super().__init__()
         self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
@@ -41,6 +59,17 @@ class ResidualBlock(nn.Module):
         return out
 
 class CNN(nn.Module):
+    """
+        Convolutional neural network with residual connections and SE attention.
+
+        The architecture consists of:
+        - Initial convolutional layers for feature extraction
+        - Residual blocks with channel attention
+        - Progressive downsampling via max pooling
+        - Global average pooling and a linear classifier
+
+        Designed for image classification on CIFAR-10.
+    """
     def __init__(self, dropout_prob = 0.0):
         super().__init__()
         # Convolutional feature extractor
@@ -81,6 +110,15 @@ class CNN(nn.Module):
 
     # Defines how data flows through the network.
     def forward(self, x):
+        """
+                Defines the forward pass of the network.
+
+                Args:
+                    x (Tensor): Input images of shape (batch, 3, 32, 32)
+
+                Returns:
+                    Tensor: Class logits of shape (batch, 10)
+        """
         # Pass input images through convolutional feature extractor, x shape: (batch, 3, 32, 32) → (batch, 64, 8, 8)
         x = self.conv_layers(x)
         # Pass the extracted features into the fully connected classifier.

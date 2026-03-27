@@ -1,3 +1,6 @@
+# GenAI usage statement: Claude (Anthropic) was used in an assistive role to help
+# structure and refine parts of this robustness evaluation module. All implementation
+# details, experimental design, and analysis choices are the author's own.
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
@@ -10,8 +13,18 @@ from utils.common import evaluate_model
 
 class NoisyDataset(Dataset):
     """
-    Dataset wrapper that adds Gaussian noise to images.
-    Used to evaluate robustness to input perturbations.
+    Dataset wrapper that injects Gaussian noise into input images.
+
+    Used to evaluate model robustness to input perturbations by applying
+    additive noise at inference time.
+
+    Args:
+        dataset (Dataset): Base dataset (e.g. CIFAR-10).
+        noise_std (float): Standard deviation of Gaussian noise.
+
+    Notes:
+        - Noise is applied per sample on-the-fly.
+        - Output is clamped to the normalised input range [-1, 1].
     """
     def __init__(self, dataset, noise_std=0.1):
         self.dataset = dataset
@@ -28,13 +41,37 @@ class NoisyDataset(Dataset):
 
 
 def build_noisy_test_loader(test_dataset, batch_size, noise_std=0.1):
+    """
+        Construct a DataLoader with Gaussian noise applied to inputs.
+
+        Args:
+            test_dataset (Dataset): Clean test dataset.
+            batch_size (int): Batch size for evaluation.
+            noise_std (float): Standard deviation of Gaussian noise.
+
+        Returns:
+            DataLoader: Noisy test loader.
+        """
     noisy_dataset = NoisyDataset(test_dataset, noise_std)
     return DataLoader(noisy_dataset, batch_size=batch_size, shuffle=False)
 
 
 def save_mixup_demo(mixup_fn, dataset, save_path, alpha=0.4, device="cpu"):
     """
-    Create a 4x4 grid of MixUp images to demonstrate the augmentation.
+    Generate and save a visual demonstration of MixUp augmentation.
+
+    Creates a 4x4 grid of mixed images by applying MixUp to sampled inputs.
+    Useful for qualitative inspection of interpolation behaviour.
+
+    Args:
+        mixup_fn (callable): MixUp function returning mixed inputs and labels.
+        dataset (Dataset): Source dataset (e.g. CIFAR-10).
+        save_path (Path | str): File path to save the image.
+        alpha (float): MixUp Beta distribution parameter.
+        device (str | torch.device): Device for computation.
+
+    Output:
+        Saves an image file showing mixed samples.
     """
     import numpy as np
     samples = torch.stack([dataset[i][0] for i in range(16)]).to(device)
@@ -55,16 +92,24 @@ def save_mixup_demo(mixup_fn, dataset, save_path, alpha=0.4, device="cpu"):
 
 def evaluate_noise_robustness(model, test_dataset, batch_size, save_path, noise_levels=None):
     """
-    Evaluate model accuracy across a range of Gaussian noise levels.
+    Evaluate model performance across multiple levels of Gaussian noise.
+
+    This function measures how accuracy degrades as input noise increases,
+    providing a robustness profile rather than a single-point estimate.
 
     Args:
-        model        (torch.nn.Module): Trained model in eval mode.
-        test_dataset:                   Clean test dataset.
-        batch_size   (int):             Batch size for evaluation.
-        noise_levels (list[float]):     Noise std values to test.
+        model (torch.nn.Module): Trained model (evaluation mode assumed).
+        test_dataset (Dataset): Clean test dataset.
+        batch_size (int): Batch size for evaluation.
+        save_path (Path | str): File path to save results (JSON).
+        noise_levels (list[float] | None): Noise standard deviations to evaluate.
 
     Returns:
-        dict: Mapping of noise_std (float) -> accuracy (float).
+        dict: Mapping of noise_std (float) to accuracy (float).
+
+    Side effects:
+        - Prints accuracy for each noise level
+        - Saves results to JSON file
     """
     if noise_levels is None:
         noise_levels = [0.0, 0.05, 0.1, 0.2, 0.3]

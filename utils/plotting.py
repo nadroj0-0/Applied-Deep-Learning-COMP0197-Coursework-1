@@ -1,3 +1,6 @@
+# GenAI usage statement: Claude (Anthropic) was used in an assistive role to help
+# structure and refine parts of this plotting module. All implementation logic,
+# visual design choices, and rendering decisions are the author's own.
 import os
 import math
 from PIL import Image, ImageDraw, ImageFont
@@ -143,6 +146,19 @@ def draw_line_curve(draw, sx, sy, data, color, width=3):
         draw.line([pts[i], pts[i+1]], fill=color, width=width)
 
 def draw_dashed_curve(draw, sx, sy, data, color, width=3, dash=8, gap=5):
+    """
+        Draw a dashed line curve between consecutive points.
+
+        Args:
+            draw  (ImageDraw.Draw): Active draw context.
+            sx    (callable):       x scaler.
+            sy    (callable):       y scaler.
+            data  (list[float]):    Y values (one per epoch).
+            color (tuple):          RGB line colour.
+            width (int):            Line width.
+            dash  (int):            Length of dash segments.
+            gap   (int):            Gap between dashes.
+        """
     pts = [(sx(i), sy(v)) for i, v in enumerate(data)]
     for i in range(len(pts) - 1):
         x0, y0 = pts[i]
@@ -185,17 +201,24 @@ def generate_gap_plot(
     save_path: Path
 ):
     """
-    Generate and save the generalisation_gap.png plot showing train vs validation
-    accuracy for both baseline and regularised models with gap shading.
+    Generate a high-resolution plot comparing training and validation accuracy
+    for baseline and regularised models, including shaded generalisation gaps.
+
+    The plot visualises:
+        - Training vs validation curves for both models
+        - The generalisation gap (shaded region between curves)
 
     Args:
-        b_epochs    (list[int]):   Baseline epoch numbers.
-        b_train_acc (list[float]): Baseline training accuracy per epoch.
-        b_val_acc   (list[float]): Baseline validation accuracy per epoch.
-        r_epochs    (list[int]):   Regularised epoch numbers.
-        r_train_acc (list[float]): Regularised training accuracy per epoch.
-        r_val_acc   (list[float]): Regularised validation accuracy per epoch.
-        save_path   (Path):        Output file path for the PNG.
+        b_epochs (list[int]): Baseline epoch indices.
+        b_train_acc (list[float]): Baseline training accuracy.
+        b_val_acc (list[float]): Baseline validation accuracy.
+        r_epochs (list[int]): Regularised epoch indices.
+        r_train_acc (list[float]): Regularised training accuracy.
+        r_val_acc (list[float]): Regularised validation accuracy.
+        save_path (Path): Output file path for the image.
+
+    Output:
+        Saves a PNG plot to disk.
     """
     epochs  = b_epochs  # both models trained for same number of epochs
     all_acc = b_train_acc + b_val_acc + r_train_acc + r_val_acc
@@ -253,17 +276,23 @@ def generate_gap_per_epoch_plot(
     save_path: Path
 ):
     """
-    Plot the generalisation gap (train - val accuracy) per epoch for
-    both models, using each model's own epoch list so they never misalign.
+    Plot the generalisation gap (train - validation accuracy) per epoch
+    for baseline and regularised models.
+
+    Each model is plotted using its own epoch indexing to ensure correct
+    alignment, even if training durations differ.
 
     Args:
-        b_epochs    (list[int]):   Baseline epoch numbers.
-        b_train_acc (list[float]): Baseline training accuracy per epoch.
-        b_val_acc   (list[float]): Baseline validation accuracy per epoch.
-        r_epochs    (list[int]):   Regularised epoch numbers.
-        r_train_acc (list[float]): Regularised training accuracy per epoch.
-        r_val_acc   (list[float]): Regularised validation accuracy per epoch.
-        save_path   (Path):        Output file path for the PNG.
+        b_epochs (list[int]): Baseline epoch indices.
+        b_train_acc (list[float]): Baseline training accuracy.
+        b_val_acc (list[float]): Baseline validation accuracy.
+        r_epochs (list[int]): Regularised epoch indices.
+        r_train_acc (list[float]): Regularised training accuracy.
+        r_val_acc (list[float]): Regularised validation accuracy.
+        save_path (Path): Output file path for the image.
+
+    Output:
+        Saves a PNG plot showing gap evolution across training.
     """
     b_gap = [t - v for t, v in zip(b_train_acc, b_val_acc)]
     r_gap = [t - v for t, v in zip(r_train_acc, r_val_acc)]

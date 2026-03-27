@@ -18,45 +18,15 @@
         "final_val_accuracy": 0.8776,
         "peak_val_accuracy": 0.8894,
         "noisy_test_metrics": {
-            "test_loss": 1.049275671005249,
-            "test_accuracy": 0.6629
+            "test_loss": 1.0542784128189087,
+            "test_accuracy": 0.6592
         },
         "noise_robustness_curve": {
             "0.0": 0.8757,
-            "0.05": 0.8238,
-            "0.1": 0.6559,
-            "0.2": 0.3462,
-            "0.3": 0.2221
-        }
-    },
-    "baseline_free_mixup_ls": {
-        "config": {
-            "seed": 42,
-            "epochs": 50,
-            "optimiser": "SGD",
-            "lr": 0.033771920679462025,
-            "momentum": 0.9474399831937865,
-            "weight_decay": 1.897743576692889e-06,
-            "reg_dropout": 0.1580298261000784,
-            "batch_size": 64,
-            "validation_fraction": 0.2,
-            "mixup_alpha": 0.2603336503748731,
-            "label_smoothing": 0.016099046341767176,
-            "early_stopping_patience": 5,
-            "early_stopping_min_delta": 0.0001
-        },
-        "final_val_accuracy": 0.8802,
-        "peak_val_accuracy": 0.8826,
-        "noisy_test_metrics": {
-            "test_loss": 1.13371903591156,
-            "test_accuracy": 0.644
-        },
-        "noise_robustness_curve": {
-            "0.0": 0.871,
-            "0.05": 0.8201,
-            "0.1": 0.6422,
-            "0.2": 0.298,
-            "0.3": 0.1921
+            "0.05": 0.8203,
+            "0.1": 0.6578,
+            "0.2": 0.3459,
+            "0.3": 0.2264
         }
     },
     "regularised_fixed_mixup_ls": {
@@ -78,45 +48,15 @@
         "final_val_accuracy": 0.9068,
         "peak_val_accuracy": 0.9103,
         "noisy_test_metrics": {
-            "test_loss": 1.1059386193275451,
-            "test_accuracy": 0.6288
+            "test_loss": 1.1010931163787843,
+            "test_accuracy": 0.6313
         },
         "noise_robustness_curve": {
             "0.0": 0.9048,
-            "0.05": 0.8269,
-            "0.1": 0.6365,
-            "0.2": 0.3768,
-            "0.3": 0.252
-        }
-    },
-    "regularised_free_mixup_ls": {
-        "config": {
-            "seed": 42,
-            "epochs": 50,
-            "optimiser": "SGD",
-            "lr": 0.011095097092787354,
-            "momentum": 0.9020243627776711,
-            "weight_decay": 6.316486464842283e-06,
-            "reg_dropout": 0.48457707914788484,
-            "batch_size": 64,
-            "validation_fraction": 0.2,
-            "mixup_alpha": 0.17808652151711352,
-            "label_smoothing": 0.09260539762712994,
-            "early_stopping_patience": 5,
-            "early_stopping_min_delta": 0.0001
-        },
-        "final_val_accuracy": 0.8829,
-        "peak_val_accuracy": 0.8839,
-        "noisy_test_metrics": {
-            "test_loss": 1.2589515409469605,
-            "test_accuracy": 0.5909
-        },
-        "noise_robustness_curve": {
-            "0.0": 0.8698,
-            "0.05": 0.7921,
-            "0.1": 0.59,
-            "0.2": 0.314,
-            "0.3": 0.2158
+            "0.05": 0.8243,
+            "0.1": 0.637,
+            "0.2": 0.3824,
+            "0.3": 0.2568
         }
     }
 }

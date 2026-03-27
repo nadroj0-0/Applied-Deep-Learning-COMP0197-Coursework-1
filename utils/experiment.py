@@ -1,3 +1,6 @@
+# GenAI usage statement: Claude (Anthropic) was used in an assistive role to help
+# structure and refine parts of this experimental pipeline. All implementation,
+# modelling decisions, and training logic are the author's own.
 from torch.utils.data import DataLoader
 import torch
 from pathlib import Path
@@ -6,6 +9,16 @@ from .hyperparameter import staged_search
 
 
 def get_model_dir(exp_name, base_dir=None):
+    """
+        Create (if needed) and return a directory for storing experiment outputs.
+
+        Args:
+            exp_name (str): Name of the experiment.
+            base_dir (Path | None): Base directory. Defaults to current file location.
+
+        Returns:
+            Path: Directory path for the experiment.
+        """
     if base_dir is None:
         base_dir = Path(__file__).parent
     model_dir = base_dir / "models" / exp_name
@@ -14,18 +27,25 @@ def get_model_dir(exp_name, base_dir=None):
 
 def run_test_evaluation(model, test_dataset, batch_size, name, model_dir,config=None):
     """
-    Complete test evaluation pipeline.
-    Builds test loader → evaluates model → attaches metrics → saves history.
+    Run full test evaluation pipeline and persist results.
+
+    This function:
+    - Builds a test DataLoader
+    - Evaluates the model on the test set
+    - Saves evaluation metrics to disk
+
     Args:
-        model (torch.nn.Module)
-        test_dataset
-        batch_size (int)
-        history (dict)
-        experiment_name (str)
-        model_dir (Path)
-        config (dict)
+        model (torch.nn.Module): Trained model.
+        test_dataset (Dataset): Test dataset.
+        batch_size (int): Evaluation batch size.
+        name (str): Experiment name.
+        model_dir (Path): Directory to save results.
+        config (dict | None): Training configuration.
+
     Returns:
-        dict: test metrics
+        tuple:
+            - dict: Test metrics (loss, accuracy, etc.)
+            - Path: Path to saved evaluation history.
     """
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     test_metrics = evaluate_test_set(model, test_loader)
@@ -59,8 +79,12 @@ def evaluate_confidence(model, data_loader):
 
 class Experiment:
     """
-    Encapsulates a single training experiment: data loading, optional
-    hyperparameter search, training, and evaluation.
+    Initialise an experiment instance.
+
+    Args:
+        name (str): Experiment name.
+        base_cfg (dict): Base configuration (hyperparameters).
+        model_dir (Path | None): Directory for saving outputs.
     """
     def __init__(self, name, base_cfg, model_dir=None):
         self.name = name
@@ -70,7 +94,22 @@ class Experiment:
         self.history = None
 
     def prepare_data(self, augment=False):
-        """Load and split data, storing loaders as instance attributes."""
+        """
+    Load dataset and create training/validation/test splits.
+
+    Optionally applies data augmentation to the training set while keeping
+    validation data clean for unbiased evaluation.
+
+    Args:
+        augment (bool): Whether to apply augmentation to training data.
+
+    Side effects:
+        Sets:
+            - self.train_loader
+            - self.val_loader
+            - self.test_dataset
+            - self.images, self.labels (for search)
+    """
         generator = init_seed(self.cfg)
         train_dataset_aug, self.test_dataset = download_data(augment=augment)
         self.images, self.labels, self.train_loader, _ = load_data_pytorch(
@@ -99,7 +138,17 @@ class Experiment:
             )
 
     def search(self, search_space, training_step=None, schedule=None, initial_models=20):
-        """Run successive halving search and update self.cfg with winner."""
+        """
+    Perform hyperparameter optimisation using successive halving.
+
+    Updates the experiment configuration with the best-performing parameters.
+
+    Args:
+        search_space (dict): Hyperparameter search space.
+        training_step (callable | None): Custom training step function.
+        schedule (list | None): Successive halving schedule.
+        initial_models (int): Number of initial configurations sampled.
+    """
         from utils.hyperparameter import staged_search
         print(f"\nStarting {self.name} hyperparameter search")
         best_cfg = staged_search(
@@ -120,7 +169,25 @@ class Experiment:
             self.cfg = best_cfg.copy()
 
     def train(self, training_step=None, use_regularisation=False, use_mixup=False, use_smoothing=False):
-        """Train the final model using self.cfg."""
+        """
+    Train the final model using the current configuration.
+
+    Supports optional regularisation techniques including:
+    - Weight decay and dropout
+    - MixUp augmentation
+    - Label smoothing
+
+    Args:
+        training_step (callable | None): Custom training step function.
+        use_regularisation (bool): Enable weight decay and dropout.
+        use_mixup (bool): Enable MixUp augmentation.
+        use_smoothing (bool): Enable label smoothing.
+
+    Side effects:
+        Sets:
+            - self.model
+            - self.history
+    """
         init_seed(self.cfg)
         train_kwargs = dict(
             lr=self.cfg["lr"],
@@ -153,9 +220,23 @@ class Experiment:
             use_regularisation=False, use_mixup=False, use_smoothing=False,
             schedule=None, initial_models=20):
         """
-        Run the full experiment pipeline in one call:
-        data preparation → optional search → training → evaluation.
-        """
+    Execute the full experiment pipeline.
+
+    Pipeline:
+        1. Data preparation
+        2. Optional hyperparameter search
+        3. Final model training
+
+    Args:
+        search_space (dict | None): Hyperparameter search space.
+        training_step (callable | None): Custom training step.
+        augment (bool): Whether to use data augmentation.
+        use_regularisation (bool): Enable regularisation.
+        use_mixup (bool): Enable MixUp.
+        use_smoothing (bool): Enable label smoothing.
+        schedule (list | None): Successive halving schedule.
+        initial_models (int): Initial configurations for search.
+    """
         self.prepare_data(augment=augment)
         if search_space is not None:
             self.search(

@@ -76,18 +76,33 @@ def print_analysis(history, noisy_test_metrics, noise_results, exp_name):
 
 def tech_analysis():
     print("\n--- Technical Analysis ---")
-    print("""
-    [REPLACE THIS BLOCK WITH YOUR TASK 2 ANALYSIS COVERING:]
-      1. Why MixUp reduces memorisation and encourages smoother decision boundaries
-      2. Why label smoothing reduces overconfidence and overshooting
-      3. How early stopping prevented further validation degradation
-      4. What the noisy test and robustness curve show about generalisation
-      5. Whether robustness degrades gradually or sharply as noise increases
-        """)
+    print("""Task 2: MixUp and Label Smoothing"
+          This experiment extended on Task 1 by incorporating MixUp augmentation and label smoothing to investigate their effect on model robustness and generalisation. The primary model of interest is the regularised one, which inherits the hyperparameters from Task 1 and adds MixUp and label smoothing on top (found via search). A baseline model with identical MixUp and label smoothing parameters but without regularisation was also trained providing a controlled comparison to isolate the effect of regularisation.
+MixUp prevents memorisation by training the network on convex combinations of input pairs rather than individual examples. Given two training samples a mixing coefficient λ~Beta(α,α) is sampled and the blended input x̃ = λx_i + (1−λ)x_j is presented to the network alongside a similarly blended soft target. Because the model never sees any training image in isolation it cannot learn to associate exact pixel patterns with hard labels. Instead it is forced to learn linear interpolations between classes which encourages smoother decision boundarie. Representations become less sample specific and more structured,  the network learns the geometry of the class manifold rather than individual sample locations within it. The selected α=0.119 is conservative giving only mild mixing where λ stays close to 0 or 1 most of the time, which is appropriate given that data augmentation is already providing variance in the training distribution.
+Label smoothing addresses a complementary failure mode. Standard cross entropy loss with hard targets (1.0 for the correct class, 0.0 for all others) means the model can always reduce loss further by pushing logits toward + or - infinity. This causes the optimiser to overshoot producing overconfident predictions that do not reflect genuine uncertainty. Label smoothing replaces the hard target with a soft distribution, the correct class receives probability 1−ε and the remaining probability ε is spread uniformly across all other classes. In this implementation ε=0.048, meaning the correct class target is 0.952 and each incorrect class receives 0.005. This creates a finite optimisation target, and helps prevent logits to from growing large and producing better confidence estimates.
+Early stopping with patience=5 was implemented by tracking the validation loss, saving the best model state at each improvement and restoring the best one. The regularised model peaked at epoch 29 with 91.0% validation accuracy and early stopping triggered at epoch 34 recovering the epoch 29 weights. The baseline model peaked at epoch 20 and stopped at epoch 25.
+The noisy test evaluation adds Gaussian noise (σ=0.1) to CIFAR-10 test images. The regularised model achieves 62.9% accuracy on this noisy set versus 66.3% for the baseline,  this shows sliht differences in how the models shape decision boundaries under noisy inputs. A robustness curve was also generated so see how the models perform with varying levels of noise. Both models show a sharp degradation beyond moderate noise levels, indicating that while MixUp and label smoothing improve clean generalisation they do not ensure robustness to large noise. The regularised model achieves higher clean test accuracy (90.5% vs 87.6%) but slightly lower accuracy under noise (62.9% vs 66.3%) suggesting a trade off between generalisation and robustness.
+GenAI suggested evaluating robustness across multiple noise levels instead of a single value providing a clearer view of performance under increasing noise.
+""")
 
 def evaluate_noisy_test(model, test_dataset, batch_size, name, config, exp_dir):
     """
-    Evaluate trained model on noisy test data.
+    Evaluates a trained model on a noisy version of the test dataset.
+
+    Gaussian noise is added to test inputs to assess robustness.
+
+    Args:
+        model (torch.nn.Module): Trained model.
+        test_dataset (Dataset): CIFAR-10 test dataset.
+        batch_size (int): Batch size for evaluation.
+        name (str): Experiment name.
+        config (dict): Training configuration.
+        exp_dir (Path): Directory for saving outputs.
+
+    Returns:
+        tuple:
+            - dict: Test loss and accuracy on noisy data.
+            - Path: Path to saved evaluation history.
     """
     test_loader = build_noisy_test_loader(test_dataset, batch_size)
     criterion = torch.nn.CrossEntropyLoss()
@@ -102,6 +117,24 @@ def evaluate_noisy_test(model, test_dataset, batch_size, name, config, exp_dir):
 
 
 def main():
+    """
+        Runs the Task 2 evaluation pipeline.
+
+        This function:
+        - Loads trained models and their histories
+        - Evaluates performance on noisy test data
+        - Computes robustness across multiple noise levels
+        - Generates MixUp visualisation examples
+        - Prints quantitative summaries for each experiment
+        - Saves a consolidated results summary to JSON
+        - Outputs a technical analysis of findings
+
+        Outputs:
+            - noise_robustness.json
+            - robustness_demo.png
+            - task2_summary.json
+            - Printed analysis to terminal
+    """
     EXPERIMENTS = {
         "baseline_fixed_mixup_ls": {"dropout_prob": 0.0},
         #"baseline_free_mixup_ls": {"dropout_prob": 0.0},   # additional model, uncomment if you want to run

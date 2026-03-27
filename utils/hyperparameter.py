@@ -6,6 +6,9 @@ Implements staged random search with progressive pruning.
 The script does NOT implement training itself. Instead it expects
 a training function to be passed in that trains for a given number
 of epochs and returns validation metrics.
+# GenAI usage statement: Claude (Anthropic) was used in an assistive role to help
+# structure and refine parts of this hyperparameter search module. All algorithmic
+# design, implementation details, and experimental decisions are the author's own.
 """
 
 import random
@@ -18,7 +21,14 @@ from utils.common import *
 
 class Leaderboard:
     """
-    Simple leaderboard tracking validation losses.
+    Tracks and ranks training sessions based on validation loss.
+
+    Stores configurations and associated training sessions, allowing
+    ranking and pruning of models during hyperparameter search.
+
+    Attributes:
+        entries (list[dict]): List of records containing config, session,
+                             and corresponding validation loss.
     """
     def __init__(self, sessions):
         self.entries = []
@@ -42,14 +52,51 @@ class Leaderboard:
         return self.ranked()[:k]
 
 def sample_uniform(low, high):
+    """
+        Sample a value uniformly from a continuous range.
+
+        Args:
+            low (float): Lower bound.
+            high (float): Upper bound.
+
+        Returns:
+            float: Sampled value.
+        """
     return random.uniform(low, high)
 
 
 def sample_log_uniform(low, high):
+    """
+        Sample a value from a log-uniform distribution.
+
+        Useful for hyperparameters spanning multiple orders of magnitude
+        (e.g. learning rate, weight decay).
+
+        Args:
+            low (float): Lower bound (must be > 0).
+            high (float): Upper bound.
+
+        Returns:
+            float: Sampled value.
+        """
     return 10 ** random.uniform(math.log10(low), math.log10(high))
 
 
 def sample_parameter(low, high,  mode):
+    """
+        Sample a parameter according to the specified distribution.
+
+        Args:
+            low (float): Lower bound.
+            high (float): Upper bound.
+            mode (str): Sampling mode ('uniform' or 'log').
+
+        Returns:
+            float: Sampled parameter value.
+
+        Raises:
+            ValueError: If sampling mode is unknown.
+        """
     if mode == "uniform":
         return sample_uniform(low, high)
     if mode == "log":
@@ -57,17 +104,47 @@ def sample_parameter(low, high,  mode):
     raise ValueError(f"Unknown sampling mode: {mode}")
 
 def sample_config(base_config, search_space):
+    """
+        Generate a random configuration by sampling from the search space.
+
+        Args:
+            base_config (dict | None): Base configuration to extend.
+            search_space (dict): Mapping of parameter names to
+                                 (low, high, mode) tuples.
+
+        Returns:
+            dict: Sampled configuration.
+        """
     cfg = {} if base_config is None else base_config.copy()
     for param, (low, high, mode) in search_space.items():
         cfg[param] = sample_parameter(low, high, mode)
     return cfg
 
 def prune(sessions, keep):
+    """
+        Select top-performing sessions based on validation loss.
+
+        Args:
+            sessions (list[tuple]): List of (config, session) pairs.
+            keep (int): Number of top models to retain.
+
+        Returns:
+            list[tuple]: Pruned list of sessions.
+        """
     leaderboard = Leaderboard(sessions)
     best = leaderboard.top(keep)
     return [(e["config"], e["session"]) for e in best]
 
 def select_best(sessions):
+    """
+        Identify the best-performing configuration based on validation loss.
+
+        Args:
+            sessions (list[tuple]): List of (config, session) pairs.
+
+        Returns:
+            tuple: (best_config, best_session)
+        """
     best_loss = float("inf")
     best = None
     for cfg, session in sessions:
@@ -82,7 +159,30 @@ def staged_search(search_space,images,labels,train_loader,val_loader,method, mod
                   dropout_prob=0.0, training_step=baseline_step, save_outputs=False, schedule=None,
                   initial_models=10, search_name="hyperparameter_search",**kwargs):
     """
-    Generic successive-halving hyperparameter search.
+    Perform successive halving hyperparameter search.
+
+    The search begins with a set of randomly sampled configurations, which are
+    trained for a small number of epochs. Poor-performing configurations are
+    iteratively pruned, and remaining candidates are trained for longer.
+
+    Args:
+        search_space (dict): Hyperparameter search space.
+        images, labels: Training data (used for session creation).
+        train_loader (DataLoader): Training data loader.
+        val_loader (DataLoader): Validation data loader.
+        method (str): Optimisation method (e.g. SGD, Adam).
+        model_dir (Path): Directory for saving results.
+        base_config (dict | None): Base configuration to extend.
+        dropout_prob (float): Default dropout if not specified.
+        training_step (callable): Training step function.
+        save_outputs (bool): Whether to save intermediate outputs.
+        schedule (list | None): List of stages with epoch counts and pruning ratios.
+        initial_models (int): Number of initial configurations.
+        search_name (str): Output file name prefix.
+        **kwargs: Additional arguments passed to training.
+
+    Returns:
+        dict: Best-performing configuration.
     """
     if schedule is None:
         schedule = [

@@ -1,3 +1,7 @@
+"""
+GenAI was used to assist with structuring experiment configurations and refining implementation details.
+All experimental design choices, hyperparameter settings, and evaluation procedures were verified and adapted independently.
+"""
 import sys
 import math
 from pathlib import Path
@@ -58,6 +62,22 @@ HYPER_PARAM_SEARCH_SCHEDULE = [
 
 
 def main():
+    """
+        Runs Task 2 experiments comparing baseline and regularised models with MixUp and label smoothing.
+
+        The function:
+        - Loads training configuration
+        - Defines experiment variants (baseline vs regularised)
+        - Optionally performs hyperparameter search
+        - Trains models and saves results
+
+        Experiments include:
+            - baseline_fixed_mixup_ls: MixUp + label smoothing only
+            - regularised_fixed_mixup_ls: MixUp + label smoothing + additional regularisation
+
+        Raises:
+            RuntimeError: If TRAIN_CONFIG is not defined.
+    """
     try:
         cfg = TRAIN_CONFIG.copy()
     except NameError:

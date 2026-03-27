@@ -1,3 +1,7 @@
+"""
+GenAI was used to assist with debugging and refining implementation details.
+All final design decisions, training logic, and evaluation procedures were verified and adapted independently.
+"""
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
@@ -17,6 +21,16 @@ print("Using device:", device)
 
 
 def init_model(images, dropout_prob=0.0):
+    """
+        Initialises the CNN model and performs a test forward pass.
+
+        Args:
+            images (Tensor): Sample batch of input images.
+            dropout_prob (float): Dropout probability for the model.
+
+        Returns:
+            tuple: (model, outputs) where outputs are from a forward pass.
+    """
     # Create the model
     print('\nCreating model...')
     model = CNN(dropout_prob).to(device)
@@ -30,6 +44,16 @@ def init_model(images, dropout_prob=0.0):
 
 
 def init_loss(outputs, labels):
+    """
+        Initialises the loss function and computes an initial loss.
+
+        Args:
+            outputs (Tensor): Model predictions.
+            labels (Tensor): Ground truth labels.
+
+        Returns:
+            tuple: (criterion, loss) where criterion is the loss function.
+    """
     # Loss function
     print('\nCreating loss function...')
     criterion = nn.CrossEntropyLoss()
@@ -41,6 +65,17 @@ def init_loss(outputs, labels):
 
 
 def init_optimiser(model, method, **kwargs):
+    """
+        Creates an optimiser dynamically from torch.optim.
+
+        Args:
+            model (torch.nn.Module): Model to optimise.
+            method (str): Name of optimiser (e.g., 'SGD', 'Adam').
+            **kwargs: Optimiser hyperparameters.
+
+        Returns:
+            torch.optim.Optimizer: Initialised optimiser.
+    """
     import inspect
     # Optimiser
     print('\nCreating optimiser...')
@@ -65,6 +100,17 @@ def init_optimiser(model, method, **kwargs):
 
 
 def evaluate_model(data_loader, model, criterion):
+    """
+        Evaluates model performance on a dataset.
+
+        Args:
+            data_loader (DataLoader): Dataset loader.
+            model (torch.nn.Module): Model to evaluate.
+            criterion (nn.Module): Loss function.
+
+        Returns:
+            tuple: (average_loss, accuracy)
+    """
     model.eval()
     total_loss = 0.0
     total_correct = 0
@@ -86,6 +132,23 @@ def evaluate_model(data_loader, model, criterion):
 
 def train_model(epochs, train_loader, val_loader, model, criterion, optim_method,
                 training_step=baseline_step,  early_stopping_patience=None,early_stopping_min_delta=0.0, **kwargs):
+    """
+        Trains a model over multiple epochs with optional early stopping.
+
+        Args:
+            epochs (int): Number of training epochs.
+            train_loader (DataLoader): Training data loader.
+            val_loader (DataLoader): Validation data loader.
+            model (torch.nn.Module): Model to train.
+            criterion (nn.Module): Loss function.
+            optim_method (Optimizer): Optimiser.
+            training_step (callable): Training step function.
+            early_stopping_patience (int, optional): Patience for early stopping.
+            early_stopping_min_delta (float): Minimum improvement threshold.
+
+        Returns:
+            dict: Training history including metrics and losses.
+    """
     # Training
     print('\nStarting training...')
     # num_epochs = 50
@@ -206,6 +269,13 @@ def save_model(model, name, model_dir):
     return model_path
 
 def save_history(history, name, stage, model, model_dir, config=None):
+    """
+        Saves a dictionary to a JSON file.
+
+        Args:
+            data (dict): Data to save.
+            path (Path): Output file path.
+    """
     model_dir.mkdir(exist_ok=True)
     history_path = model_dir / f'{name}_{stage}_history.json'
     payload = {
@@ -224,6 +294,22 @@ def save_history(history, name, stage, model, model_dir, config=None):
 def full_train(name, images, labels, train_loader, val_loader, method, epochs, model_dir,
                config=None, dropout_prob=0.0, training_step=baseline_step, save_outputs=True,
                session=None,**kwargs):
+    """
+        Runs full training pipeline including model creation, training, and saving.
+
+        Args:
+            name (str): Model name.
+            images (Tensor): Sample batch.
+            labels (Tensor): Sample labels.
+            train_loader (DataLoader): Training loader.
+            val_loader (DataLoader): Validation loader.
+            method (str): Optimiser name.
+            epochs (int): Number of epochs.
+            model_dir (Path): Directory to save outputs.
+
+        Returns:
+            tuple: (model, history, model_path, history_path)
+    """
     from utils.training_session import create_training_session
     start_time = time.time()
     if session is None:
